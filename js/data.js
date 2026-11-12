@@ -167,9 +167,23 @@ const PLAN = {
 const REST_PLAN = ['p0202','p0101','p0102','p0103','p0106','p0506'];
 
 const CATS = [
-  ['all','Все'],['glutes','Ягодицы'],['legs','Ноги'],['back','Спина'],['chest','Грудь'],['arms','Руки'],
-  ['core','Пресс и кор'],['posture','Осанка'],['warm','Разминка'],['pelvis','Мобильность таза']
+  ['all','Все'],['glutes','Ягодицы'],['legs','Ноги'],['hips','Тазобедренные'],['back','Спина'],['posture','Осанка и поясница'],
+  ['chest','Грудь'],['arms','Руки'],['core','Пресс и кор'],['cardio','Кардио'],['warm','Разминка'],['pelvis','Мобильность таза'],['stretch','Растяжка']
 ];
+// категории упражнений: первая — основная (в ней упражнение показывается в «Все»)
+const EXCATS = {
+  hip_thrust:['glutes'], bulgarian:['glutes','legs'], rdl:['glutes','legs'], cable_kickback:['glutes'], hip_abduction:['glutes','hips'],
+  clamshell:['glutes','hips'], band_walk:['glutes','hips'], fire_hydrant:['glutes','hips'],
+  leg_press:['legs','glutes'], leg_curl:['legs'], hip_adduction:['legs','hips'],
+  lat_pulldown:['back'], seated_row:['back','posture'], pullup_grav:['back'], chinup_grav:['back','arms'],
+  hyperext:['posture','back','glutes'], reverse_fly:['posture','back'],
+  chest_press:['chest'], pec_deck:['chest'],
+  dips_grav:['arms','chest'], db_curl:['arms'], hammer:['arms'], triceps_pushdown:['arms'], triceps_machine:['arms'],
+  machine_crunch:['core'], seated_leg_raise:['core'], dead_bug:['core','posture'], side_plank:['core'],
+  stepper:['cardio','warm'],
+  w_9090rot:['warm','hips'], w_9090lift:['warm','hips','glutes'], w_9090foot:['warm','hips'], w_slide:['warm','hips'], w_frog:['warm','hips']
+};
+const PDFCATS = {'Раздел 01':['pelvis'], 'Раздел 02':['pelvis','posture'], 'Раздел 03':['stretch','hips'], 'Раздел 04':['posture','pelvis'], 'Раздел 05':['pelvis']};
 
 const GOALS = [
   ['Округлая и объёмная попа','мостик, румынская тяга, болгарские выпады, разведение бёдер'],

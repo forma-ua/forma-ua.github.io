@@ -95,16 +95,34 @@ function getItem(id) {
 function e1rm(w, r) { if (!w || !r) return 0; return r <= 10 ? (w * (1 + r / 30) + w * 36 / (37 - r)) / 2 : w * (1 + r / 30); }
 function exHistory(exId) {
   const out = [];
-  S.logs.forEach(l => { const s = l.sets[exId]; if (s && s.length) out.push({date: l.date, day: l.day, sets: s}); });
+  S.logs.forEach(l => { const s = l.sets[exId]; if (s && s.length) out.push({date: l.date, day: l.day, end: l.end, sets: s}); });
   return out.sort((a, b) => a.date < b.date ? -1 : 1);
 }
 function topSet(sets) { return sets.reduce((b, s) => (e1rm(s.w, s.r) > e1rm(b.w, b.r) ? s : b), sets[0]); }
 function unitOf(ex) { return ex.kind === 'a' ? 'кг помощи' : ex.kind === 't' ? 'сек' : ex.kind === 'band' ? 'резинка' : ex.kind === 'bw' ? 'свой вес' : (ex.unit || 'кг'); }
 
+// ---------- рабочие веса ----------
+const WEIGHTED = k => k === 'w' || k === 'a' || k === 'bw';
+function manualW(id) { const m = S.weights && S.weights[id]; if (!m) return null; const h = exHistory(id); const lastEnd = h.length ? h[h.length - 1].end || 0 : 0; return m.at > lastEnd ? m : null; }
+function curW(id, k) { const sg = suggest(id, k || Object.keys(PLAN).find(x => PLAN[x].main.some(m => m[0] === id)) || 'A'); return sg; }
+function wLabel(ex, w, bw) {
+  if (ex.kind === 'a') return bw || w === 0 ? 'без помощи' : w == null ? 'не указан' : fmtKg(w) + ' кг помощи';
+  if (ex.kind === 'bw') return w > 0 && !bw ? '+' + fmtKg(w) + ' кг' : 'без веса';
+  if (ex.kind === 'w') return bw || w === 0 ? 'без веса' : w == null ? 'не указан' : fmtKg(w) + ' ' + (ex.unit || 'кг');
+  return unitOf(ex);
+}
+function setW(id, w, bw) { S.weights = S.weights || {}; S.weights[id] = {w: w == null || isNaN(w) ? null : r1(w), bw: !!bw, at: Date.now()}; save(); }
 // double progression: next session suggestion
 function suggest(exId, dayKey) {
+  const r = suggestRaw(exId, dayKey); const ex = EX[exId];
+  if (r.bw == null) r.bw = (ex.kind === 'w' || ex.kind === 'a') && r.w === 0;
+  return r;
+}
+function suggestRaw(exId, dayKey) {
   const ex = EX[exId]; const row = PLAN[dayKey]?.main.find(m => m[0] === exId);
   const lo = row ? row[2] : 8, hi = row ? row[3] : 12;
+  const mw = manualW(exId);
+  if (mw) return {w: mw.bw ? 0 : mw.w, bw: mw.bw || (ex.kind === 'bw' && !mw.w), target: lo + '–' + hi, dir: 'same', why: mw.bw ? 'Без веса — как ты указала.' : 'Рабочий вес, который ты указала.'};
   let h = exHistory(exId).filter(x => x.day === dayKey); if (!h.length) h = exHistory(exId);
   if (!h.length) return {w: null, target: lo + '–' + hi, dir: 'new', why: 'Первый раз: подбери вес, чтобы последние 2 повтора давались тяжело, но чисто.'};
   const last = h[h.length - 1].sets; const w = last[0].w;
@@ -195,7 +213,7 @@ function lineChart(pts, o = {}) {
 }
 
 // ================= rendering shell =================
-let TAB = 'today', PLANTAB = planKeyFor(TODAY) || nextWorkout().key, LIBCAT = 'all', LIBQ = '', JTAB = 'progress';
+let TAB = 'today', PLANTAB = planKeyFor(TODAY) || nextWorkout().key, LIBCAT = 'all', LIBQ = '', JTAB = 'calendar';
 function nextWorkout() { for (let i = 0; i < 8; i++) { const d = addDays(TODAY, i); const k = planKeyFor(d); if (k) return {key: k, date: d, inDays: i}; } return {key: 'A', date: TODAY, inDays: 0}; }
 
 const ICONS = {
@@ -294,7 +312,7 @@ function vToday() {
   const doneToday = S.logs.find(l => l.date === TODAY_ISO);
   const ws = weekStats();
   const week = [...Array(7)].map((_, i) => { const d = addDays(ws.monday, i); const kk = planKeyFor(d); const done = S.logs.some(l => l.date === iso(d));
-    return `<div class="wd ${kk ? 'on d' + kk : ''} ${iso(d) === TODAY_ISO ? 'today' : ''} ${done ? 'done' : ''}">${DOW[d.getDay()]}<b>${kk || '·'}</b></div>`; }).join('');
+    const dk = S.logs.find(l => l.date === iso(d))?.day || kk; return `<button class="wd ${dk ? 'on d' + dk : ''} ${iso(d) === TODAY_ISO ? 'today' : ''} ${done ? 'done' : ''}" data-act="day" data-date="${iso(d)}" aria-label="${DOWL[d.getDay()]}${done ? ', тренировка сделана' : ''}">${DOW[d.getDay()]}<b>${dk || '·'}</b></button>`; }).join('');
   const hk = k || nx.key, P = PLAN[hk];
   const rec = recovery(); const gl = Math.min(rec.glutemax, rec.glutemed);
   const recNote = k && gl < 70 ? `<p class="small"><b>Ягодицы восстановились на ${gl}%</b> — сегодня оставляй 2–3 повтора в запасе.</p>` : '';
@@ -314,7 +332,7 @@ function vToday() {
   const resume = SES ? `<button class="note" data-act="resume" style="border:0;text-align:left"><b>Тренировка ${SES.k} не завершена.</b> Нажми, чтобы продолжить.</button>` : '';
   return `<div class="screen">
     <p class="greet">${greeting()}</p>
-    ${resume}${profileCard()}${hero}${backupReminder()}
+    ${resume}${profileCard()}${!S.logs.length && !Object.keys(S.weights || {}).length && !S.sample ? '<section class="card"><div class="row between"><h2>Рабочие веса</h2><span class="tag hot">2 минуты</span></div><p class="small muted">Впиши, с какими весами работаешь сейчас, — forma. подставит их в тренировки и будет подсказывать прибавку.</p><button class="btn block" data-act="weights">Указать веса</button></section>' : ''}${hero}${backupReminder()}
     <section class="card"><div class="ringrow">
       <div class="ring">${ringSVG(['A','B','C'].map(x => ({frac: ws.done.has(x) ? 1 : 0, color: 'var(--d' + x + ')'})))}<div class="c"><div><b>${ws.done.size}/3</b><span>на неделе</span></div></div></div>
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0"><div class="weekdays">${week}</div>
@@ -356,12 +374,13 @@ function vPlan() {
   const k = PLANTAB, p = PLAN[k], m = sessionMinutes(k);
   const main = p.main.map(([id, n, lo, hi, note, opt]) => {
     const ex = EX[id]; const sg = suggest(id, k);
-    const wtxt = ex.kind === 'w' || ex.kind === 'a' ? (sg.w == null ? '<small>подобрать</small>' : `<span class="nextw ${sg.dir}">${fmtKg(sg.w)}</span> <small>${unitOf(ex)}</small>`) : `<small>${unitOf(ex)}</small>`;
+    const wtxt = WEIGHTED(ex.kind) ? (sg.bw || (ex.kind === 'bw' && !sg.w) ? `<small>${esc(wLabel(ex, 0, true))}</small>` : sg.w == null ? '<small class="nextw" style="color:var(--warn)">указать вес</small>' : `<span class="nextw ${sg.dir}">${fmtKg(sg.w)}</span> <small>${ex.kind === 'a' ? 'кг помощи' : (ex.unit || 'кг')}</small>`) : `<small>${unitOf(ex)}</small>`;
     return itemRow(id, `<b>${n} × ${lo}–${hi}</b>${wtxt}`, (note ? note + ' · ' : '') + ex.p.map(x => MUSCLES[x].split(/[ ,]/)[0].toLowerCase()).join(', '), opt?.alt ? `<span class="tag" style="margin-top:4px">замена: ${esc(EX[opt.alt].name)}</span>` : '');
   }).join('');
   return `<div class="screen d${k}">
     <div class="screen-h"><span class="eyebrow">3 тренировки на всё тело</span><h1>План</h1></div>
     <div class="daytabs" role="group" aria-label="Тренировка">${Object.keys(PLAN).map(x => `<button class="daytab d${x}" data-act="ptab" data-k="${x}" aria-pressed="${x === k}"><b>${x}</b><span>${PLAN[x].day}</span></button>`).join('')}</div>
+    <button class="btn line block" data-act="weights">Мои рабочие веса · указать или изменить</button>
     <section class="hero d${k}"><span class="letter" aria-hidden="true">${k}</span>
       <span class="eyebrow">${p.day} · ${p.main.length} основных · ≈ ${m.total} мин</span>
       <h1>${p.title}</h1>
@@ -386,26 +405,35 @@ function vPlan() {
 
 // ---------- Библиотека ----------
 function libItems() {
-  const gym = Object.keys(EX).map(id => ({id, cat: EX[id].cat === 'cardio' ? 'warm' : EX[id].cat}));
-  const warm = WARM.filter(w => !w.ref).map(w => ({id: w.id, cat: 'warm'}));
-  const pdf = PDFX.map(p => ({id: p.id, cat: 'pelvis'}));
+  const gym = Object.keys(EX).map(id => ({id, cats: EXCATS[id] || [EX[id].cat], kind: 0}));
+  const warm = WARM.filter(w => !w.ref).map(w => ({id: w.id, cats: EXCATS[w.id] || ['warm'], kind: 1}));
+  const pdf = PDFX.map(p => ({id: p.id, cats: PDFCATS[p.section] || ['pelvis'], kind: 2}));
   return gym.concat(warm, pdf);
 }
+function libRow(x) {
+  const it = getItem(x.id);
+  if (it.type === 'gym') { const sg = WEIGHTED(it.kind) ? curW(x.id) : null;
+    return itemRow(x.id, sg ? `<b>${sg.w == null && !sg.bw ? '—' : esc(wLabel(it, sg.w, sg.bw))}</b><small>${esc(it.equip)}</small>` : `<small>${esc(it.equip)}</small>`, it.p.map(m => MUSCLES[m]).join(', ')); }
+  if (it.type === 'pdf') return itemRow(x.id, `<span class="tag hot">${esc(it.tag || 'гид')}</span>`, esc(it.sectionTitle));
+  return itemRow(x.id, `<small>${esc(it.dose)}</small>`, 'Разминка');
+}
+const libSort = (a, b) => a.kind - b.kind || (a.kind === 2 ? (a.id < b.id ? -1 : 1) : getItem(a.id).name.localeCompare(getItem(b.id).name, 'ru'));
 function vLib() {
-  const q = LIBQ.trim().toLowerCase();
-  const items = libItems().filter(x => (LIBCAT === 'all' || x.cat === LIBCAT) && (!q || getItem(x.id).name.toLowerCase().includes(q)));
-  const rows = items.map(x => {
-    const it = getItem(x.id);
-    if (it.type === 'gym') { const h = exHistory(x.id); const last = h.length ? topSet(h[h.length - 1].sets) : null;
-      return itemRow(x.id, last && (it.kind === 'w' || it.kind === 'a') ? `<b>${fmtKg(last.w)}</b><small>${unitOf(it)}</small>` : `<small>${esc(it.equip)}</small>`, it.p.map(m => MUSCLES[m]).join(', ')); }
-    if (it.type === 'pdf') return itemRow(x.id, `<span class="tag hot">${esc(it.tag || 'гид')}</span>`, esc(it.sectionTitle));
-    return itemRow(x.id, `<small>${esc(it.dose)}</small>`, 'Разминка');
-  }).join('');
+  const q = LIBQ.trim().toLowerCase(); const all = libItems();
+  const match = x => !q || getItem(x.id).name.toLowerCase().includes(q);
+  let body = '';
+  if (LIBCAT === 'all') {
+    body = CATS.slice(1).map(([c, l]) => { const g = all.filter(x => x.cats[0] === c && match(x)).sort(libSort); return g.length ? `<div class="block-h"><h2>${l}</h2><span class="small muted">${g.length}</span></div><div class="list">${g.map(libRow).join('')}</div>` : ''; }).join('');
+  } else {
+    const g = all.filter(x => x.cats.includes(LIBCAT) && match(x)).sort(libSort);
+    body = g.length ? `<div class="list">${g.map(libRow).join('')}</div>` : '';
+  }
   return `<div class="screen">
-    <div class="screen-h"><span class="eyebrow">${libItems().length} упражнений · твои + гид «Таз в движении»</span><h1>Упражнения</h1></div>
+    <div class="screen-h"><span class="eyebrow">${all.length} упражнений · твои + гид «Таз в движении»</span><h1>Упражнения</h1></div>
     <input class="inp" id="libq" type="search" placeholder="Найти упражнение" value="${esc(LIBQ)}" aria-label="Поиск">
     <div class="chips" role="group" aria-label="Категории">${CATS.map(([c, l]) => `<button class="chip" data-act="cat" data-c="${c}" aria-pressed="${LIBCAT === c}">${l}</button>`).join('')}</div>
-    <div class="list">${rows || '<p class="item" style="display:block">Ничего не нашлось. Попробуй другое слово.</p>'}</div>
+    <button class="btn line block" data-act="weights">Мои рабочие веса</button>
+    ${body || '<section class="card flat"><p class="small">Ничего не нашлось. Попробуй другое слово или категорию.</p></section>'}
   </div>`;
 }
 
@@ -423,9 +451,10 @@ function recordsList() {
   return rows ? `<div class="list">${rows}</div>` : '<section class="card flat"><h2>Рекордов пока нет</h2><p class="small muted">Они появятся после первых тренировок — и каждый новый отметим.</p></section>';
 }
 function vJournal() {
-  const seg = `<div class="chips" role="group" aria-label="Раздел журнала">${[['progress','Прогресс'],['records','Рекорды'],['weight','Вес тела'],['body','Замеры'],['logs','История']].map(([k, l]) => `<button class="chip" data-act="jtab" data-k="${k}" aria-pressed="${JTAB === k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="chips" role="group" aria-label="Раздел журнала">${[['calendar','Календарь'],['logs','История'],['progress','Прогресс'],['records','Рекорды'],['weight','Вес тела'],['body','Замеры']].map(([k, l]) => `<button class="chip" data-act="jtab" data-k="${k}" aria-pressed="${JTAB === k}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (JTAB === 'records') body = recordsList();
+  else if (JTAB === 'calendar') body = calendarHtml();
   else if (JTAB === 'weight') {
     const pts = S.body.map(b => ({x: b.date, y: b.weight}));
     const first = S.body[0], last = S.body[S.body.length - 1];
@@ -442,7 +471,7 @@ function vJournal() {
       ${ms.slice().reverse().map(b => `<tr><td>${fdate(b.date)}</td><td>${fmtKg(b.waist)}</td><td>${fmtKg(b.hips)}</td><td>${fmtKg(b.thigh)}</td></tr>`).join('')}</tbody></table></div></section>
       <form class="card" id="fm"><h2>Новый замер, см</h2><div class="grid3"><label class="f">Талия<input class="inp" type="number" step="0.1" id="fm-w" inputmode="decimal"></label><label class="f">Ягодицы<input class="inp" type="number" step="0.1" id="fm-h" inputmode="decimal"></label><label class="f">Бедро<input class="inp" type="number" step="0.1" id="fm-t" inputmode="decimal"></label></div><button class="btn">Сохранить</button></form>`;
   } else if (JTAB === 'logs') {
-    body = `<div class="list">${S.logs.slice().reverse().map(l => `<button class="item d${l.day}" data-act="log" data-id="${l.id}"><div class="thumb letter">${l.day}</div><div><div class="t">${fdate(l.date)} · ${PLAN[l.day].short}${(l.prs || []).length ? ' <span class="tag pr">' + l.prs.length + ' PR</span>' : ''}</div><div class="s">${Math.round((l.end - l.start) / 60000)} мин · ${l.kcal} ккал · ${esc(l.src || 'forma')}</div></div><div class="r"><b>${(tonnage(l.sets) / 1000).toFixed(1).replace('.', ',')} т</b><small>тоннаж</small></div></button>`).join('') || '<p class="item" style="display:block">Тренировок пока нет.</p>'}</div>`;
+    body = `<div class="list">${S.logs.slice().reverse().map(l => `<button class="item d${l.day}" data-act="log" data-id="${l.id}"><div class="thumb letter">${l.day}</div><div><div class="t">${fdate(l.date)} · ${PLAN[l.day].short}${(l.prs || []).length ? ' <span class="tag pr">' + l.prs.length + ' PR</span>' : ''}</div><div class="s">${Math.round((l.end - l.start) / 60000)} мин · ${l.kcal} ккал · ${esc(l.src || 'forma')}</div></div><div class="r"><b>${(tonnage(l.sets) / 1000).toFixed(1).replace('.', ',')} т</b><small>тоннаж</small></div></button>`).join('') || '<p class="item" style="display:block">Тренировок пока нет.</p>'}</div><button class="btn line block" data-act="pastday">+ Добавить прошлую тренировку</button>`;
   } else {
     const key = ['hip_thrust','leg_press','rdl','lat_pulldown'];
     body = key.map(id => {
@@ -598,6 +627,7 @@ function exSheet(id) {
     const sg = sgK ? suggest(id, sgK) : null; const h = exHistory(id).filter(x => !sgK || x.day === sgK);
     html += `<div class="row wrap"><span class="tag">${esc(it.equip)}</span>${days.map(d => `<span class="tag hot">${d}</span>`).join('')}${it.perSide ? '<span class="tag">на каждую сторону</span>' : ''}</div>
       <div class="mapwrap">${bodyMap(it.p, it.s)}<div class="legend"><b class="small">Какие мышцы работают</b>${it.p.map(m => `<span><i class="k" style="background:var(--hot)"></i>${MUSCLES[m]}</span>`).join('')}${it.s.map(m => `<span class="muted"><i class="k" style="background:var(--warm)"></i>${MUSCLES[m]}</span>`).join('')}</div></div>
+      ${WEIGHTED(it.kind) ? `<section class="card"><h3>Мой рабочий вес</h3><div class="wlist">${wRow(id, null)}</div></section>` : ''}
       ${sg ? `<section class="note"><b>В следующий раз:</b> ${sg.w != null && (it.kind === 'w' || it.kind === 'a') ? fmtKg(sg.w) + ' ' + unitOf(it) + ' × ' + sg.target + '. ' : ''}${sg.why}</section>` : ''}
       ${h.length >= 2 ? `<section class="card"><h3>${it.kind === 'w' ? 'Расчётный максимум (1ПМ), кг' : it.kind === 'a' ? 'Помощь гравитрона, кг' : 'Лучший подход, повторы'}${sgK ? ' · тренировка ' + sgK : ''}</h3>${lineChart(h.map(x => ({x: x.date, y: it.kind === 'w' ? r1(e1rm(topSet(x.sets).w, topSet(x.sets).r)) : it.kind === 'a' ? x.sets[0].w : Math.max(...x.sets.map(z => z.r))})), {label: 'История'})}
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Подходы</th></tr></thead><tbody>${h.slice(-5).reverse().map(x => `<tr><td>${fdate(x.date)} · ${x.day}</td><td>${x.sets.map(s => (it.kind === 'w' || it.kind === 'a' ? fmtKg(s.w) + '×' : '') + s.r).join(', ')}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
@@ -613,7 +643,77 @@ function logSheet(id) {
   openSheet(sheetTop(`${fdate(l.date)} · тренировка ${l.day}`) + `
     <div class="grid3"><div class="stat"><span>Время</span><b>${Math.round((l.end - l.start) / 60000)} мин</b></div><div class="stat"><span>Ср. пульс</span><b>${l.avgHR || '—'}</b></div><div class="stat"><span>Ккал</span><b>${l.kcal}</b></div></div>
     <p class="small muted">Пульс и калории — ${esc(l.src || 'оценка forma')}. Тоннаж ${tonnage(l.sets)} кг.</p>
-    <div class="list">${Object.entries(l.sets).map(([eid, sets]) => { const e = EX[eid]; return `<div class="item" style="grid-template-columns:1fr auto"><div><div class="t">${esc(e.name)}</div></div><div class="r">${sets.map(s => (e.kind === 'w' || e.kind === 'a' ? fmtKg(s.w) + '×' : '') + s.r).join(' · ')}</div></div>`; }).join('')}</div>`);
+    <div class="list">${Object.entries(l.sets).map(([eid, sets]) => { const e = EX[eid]; return `<div class="item" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t">${esc(e.name)}</div></div><div class="r">${sets.map(s => (WEIGHTED(e.kind) && s.w ? fmtKg(s.w) + '×' : '') + s.r).join(' · ')}</div></div>`; }).join('')}</div>
+    <div class="row wrap"><button class="btn sm" data-act="editlog" data-id="${l.id}">Изменить веса и повторы</button><button class="btn ghost sm" data-act="dellog" data-id="${l.id}">Удалить</button></div>`);
+}
+
+// ---------- рабочие веса: один экран для всех упражнений ----------
+function planExercises() { const out = []; Object.entries(PLAN).forEach(([k, p]) => p.main.forEach(m => { [m[0], m[5]?.alt].filter(Boolean).forEach(id => { let o = out.find(x => x.id === id); if (!o) out.push(o = {id, days: []}); if (!o.days.includes(k)) o.days.push(k); }); })); return out; }
+function wRow(id, days) {
+  const e = EX[id]; const sg = curW(id, days && days[0]); const bw = !!sg.bw || (e.kind === 'bw' && !sg.w); const val = bw || sg.w == null ? '' : String(sg.w);
+  return `<div class="wrow" data-wrow="${id}">
+    <div class="wname"><b>${esc(e.name)}</b><span class="small muted">${days ? days.join(' · ') + ' · ' : ''}${esc(e.equip)}${e.unit ? ' · вес одной гантели' : e.kind === 'a' ? ' · противовес' : ''}</span></div>
+    <div class="wctl" ${bw ? 'data-off="1"' : ''}><button class="stepb" data-act="wstep" data-id="${id}" data-d="-1" aria-label="Меньше">−</button>
+      <input class="inp wval" id="w-${id}" data-w="${id}" inputmode="decimal" type="number" step="0.5" min="0" value="${val}" placeholder="—" ${bw ? 'disabled' : ''} aria-label="Вес: ${esc(e.name)}">
+      <span class="wunit">${e.kind === 'a' ? 'кг помощи' : 'кг'}</span>
+      <button class="stepb" data-act="wstep" data-id="${id}" data-d="1" aria-label="Больше">+</button>
+      <button class="chip bwchip" data-act="wbw" data-id="${id}" aria-pressed="${bw}">${e.kind === 'a' ? 'без помощи' : 'без веса'}</button></div>
+  </div>`;
+}
+function weightsSheet() {
+  const list = planExercises().filter(x => WEIGHTED(EX[x.id].kind));
+  openSheet(sheetTop('Мои рабочие веса') + `<p class="small muted">Впиши, с каким весом работаешь сейчас. Если упражнение делаешь без отягощения — нажми «без веса». Эти цифры сразу подставятся в план, тренировку, библиотеку и расчёты, а после тренировок forma. будет сама предлагать прибавку.</p>
+    ${['A', 'B', 'C'].map(k => { const g = list.filter(x => x.days[0] === k); return g.length ? `<div class="block-h d${k}"><h2><em>${k}</em>${PLAN[k].day}</h2></div><div class="card wlist">${g.map(x => wRow(x.id, x.days)).join('')}</div>` : ''; }).join('')}
+    <button class="btn block" data-act="close">Готово</button>`);
+}
+function wSync(id) {
+  const row = document.querySelector(`[data-wrow="${id}"]`); if (!row) return;
+  const m = S.weights[id]; const inp = row.querySelector('.wval'), chip = row.querySelector('.bwchip'), ctl = row.querySelector('.wctl');
+  inp.disabled = !!m.bw; chip.setAttribute('aria-pressed', !!m.bw); if (m.bw) ctl.dataset.off = '1'; else delete ctl.dataset.off;
+  if (document.activeElement !== inp) inp.value = m.bw || m.w == null ? '' : String(m.w);
+}
+
+// ---------- прошлые дни ----------
+function dayAction(date) {
+  const logs = S.logs.filter(l => l.date === date);
+  if (logs.length === 1) return logSheet(logs[0].id);
+  if (logs.length > 1) return openSheet(sheetTop(fdate(date)) + `<div class="list">${logs.map(l => `<button class="item d${l.day}" data-act="log" data-id="${l.id}"><div class="thumb letter">${l.day}</div><div><div class="t">${PLAN[l.day].short}</div></div><div class="r"><small>${Math.round((l.end - l.start) / 60000)} мин</small></div></button>`).join('')}</div>`);
+  if (date > TODAY_ISO) return toast('Это будущий день — отметить тренировку можно, когда он настанет.');
+  pastDaySheet(date);
+}
+function pastDaySheet(date, k) {
+  const d = date ? parseISO(date) : TODAY; k = k || planKeyFor(d) || nextWorkout().key;
+  openSheet(sheetTop('Прошлая тренировка') + `
+    <label class="f">Дата<input class="inp" type="date" id="pd-date" value="${iso(d)}" max="${TODAY_ISO}"></label>
+    <div class="daytabs" role="group" aria-label="Какая тренировка">${Object.keys(PLAN).map(x => `<button class="daytab d${x}" data-act="pdk" data-k="${x}" aria-pressed="${x === k}"><b>${x}</b><span>${PLAN[x].day}</span></button>`).join('')}</div>
+    <button class="btn block" data-act="pdfill">Вписать веса и повторы</button>
+    <button class="btn line block" data-act="pdquick">Просто отметить выполненной</button>
+    <p class="small muted">«Просто отметить» сохранит тренировку с твоими текущими рабочими весами и нижней границей повторов. Потом её можно открыть и поправить.</p>`);
+}
+function quickLog(date, k) {
+  const d0 = parseISO(date); d0.setHours(18, 30); const start = +d0, end = start + 80 * 60000; const sets = {}; let skipped = 0;
+  PLAN[k].main.forEach(([id, n, lo]) => { const e = EX[id]; const sg = suggest(id, k);
+    if ((e.kind === 'w' || e.kind === 'a') && sg.w == null && !sg.bw) { skipped++; return; }
+    sets[id] = [...Array(n)].map(() => ({w: sg.bw ? 0 : (sg.w || 0), r: lo, done: true})); });
+  const log = {id: 'l' + end, date, day: k, start, end, sets, kcal: Math.round(metKcal(4.5, curWeight(), 80)), avgHR: null, src: 'отмечено вручную', quick: true, prs: []};
+  S.logs.push(log); S.logs.sort((a, b) => a.start - b.start); save(); closeSheet(); render();
+  toast(`Тренировка ${k} за ${fdate(date)} отмечена` + (skipped ? `. Вес не был указан у ${skipped} упр. — они не записаны, их можно добавить через «Изменить»` : ''));
+}
+let CALM = TODAY_ISO.slice(0, 7);
+function calendarHtml() {
+  const [y, m] = CALM.split('-').map(Number); const first = new Date(y, m - 1, 1); const days = new Date(y, m, 0).getDate();
+  const pad = (first.getDay() + 6) % 7; const cells = [];
+  for (let i = 0; i < pad; i++) cells.push('<span></span>');
+  for (let dd = 1; dd <= days; dd++) { const ds = `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`; const lg = S.logs.find(l => l.date === ds); const pk = planKeyFor(parseISO(ds));
+    const cls = lg ? 'done d' + lg.day : (pk && ds < TODAY_ISO ? 'miss d' + pk : pk ? 'plan d' + pk : '');
+    cells.push(`<button class="cd ${cls} ${ds === TODAY_ISO ? 'today' : ''}" data-act="day" data-date="${ds}"><span>${dd}</span>${lg ? `<b>${lg.day}</b>` : pk ? `<i>${pk}</i>` : ''}</button>`); }
+  const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const n = S.logs.filter(l => l.date.startsWith(CALM)).length;
+  return `<section class="card"><div class="row between"><button class="icon-btn" data-act="calm" data-d="-1" aria-label="Предыдущий месяц">‹</button><h2>${MONTHS[m - 1]} ${y}</h2><button class="icon-btn" data-act="calm" data-d="1" aria-label="Следующий месяц">›</button></div>
+    <div class="cal"><span class="cw">Пн</span><span class="cw">Вт</span><span class="cw">Ср</span><span class="cw">Чт</span><span class="cw">Пт</span><span class="cw">Сб</span><span class="cw">Вс</span>${cells.join('')}</div>
+    <div class="legend3"><span><i style="background:var(--dA)"></i>сделано</span><span><i style="background:transparent;border:1.5px dashed var(--faint)"></i>пропущено</span></div>
+    <p class="small muted">${n} ${plural(n, 'тренировка', 'тренировки', 'тренировок')} за месяц. Нажми на день, чтобы открыть тренировку или отметить прошедшую.</p></section>
+    <button class="btn line block" data-act="pastday">+ Добавить прошлую тренировку</button>`;
 }
 
 // ---------- тренировка (сессия) ----------
@@ -629,39 +729,48 @@ async function wake(on) {
   try { if (on && 'wakeLock' in navigator && !WAKE) { WAKE = await navigator.wakeLock.request('screen'); WAKE.addEventListener('release', () => WAKE = null); } else if (!on && WAKE) { await WAKE.release(); WAKE = null; } } catch (e) {}
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && SES && $('#sheet .timer')) wake(true); });
-function startSession(k) {
-  const p = PLAN[k];
-  SES = {k, start: Date.now(), warm: {}, act: {}, mob: {}, swap: {}, sets: {}, wu: {}};
-  p.main.forEach(([id, n, lo, hi]) => { const sg = suggest(id, k); SES.sets[id] = [...Array(n)].map(() => ({w: sg.w ?? '', r: '', done: false})); });
-  saveSes(); wake(true); renderSession();
+function startSession(k, opt = {}) {
+  const p = PLAN[k]; const edit = opt.editId ? S.logs.find(l => l.id === opt.editId) : null;
+  SES = {k, start: Date.now(), warm: {}, act: {}, mob: {}, swap: {}, sets: {}, wu: {}, bw: {}, date: opt.date || (edit && edit.date) || null, editId: edit ? edit.id : null};
+  p.main.forEach(([id, n, lo, hi, note, o]) => {
+    const useId = edit && !edit.sets[id] && o?.alt && edit.sets[o.alt] ? o.alt : id; if (useId !== id) SES.swap[id] = useId;
+    const sg = suggest(useId, k); const old = edit && edit.sets[useId];
+    SES.bw[useId] = old ? old.every(x => !x.w) && EX[useId].kind !== 'band' && EX[useId].kind !== 't' : !!sg.bw;
+    SES.sets[useId] = [...Array(Math.max(n, old ? old.length : 0))].map((_, i) => old && old[i] ? {w: old[i].w || '', r: old[i].r, done: true} : {w: sg.bw ? '' : (sg.w ?? ''), r: '', done: false});
+  });
+  saveSes(); if (!SES.date) wake(true); renderSession();
 }
 function renderSession() {
-  const k = SES.k, p = PLAN[k]; const el = Math.round((Date.now() - SES.start) / 60000); SES.wu = SES.wu || {};
+  const k = SES.k, p = PLAN[k]; const el = Math.round((Date.now() - SES.start) / 60000); SES.wu = SES.wu || {}; SES.bw = SES.bw || {};
+  const past = !!SES.date;
   const mainHtml = p.main.map(([id0, n, lo, hi, note, opt]) => {
     const id = SES.swap[id0] || id0; const e = EX[id]; const sg = suggest(id, k);
-    if (!SES.sets[id]) SES.sets[id] = [...Array(n)].map(() => ({w: sg.w ?? '', r: '', done: false}));
-    const showW = e.kind === 'w' || e.kind === 'a';
-    const wu = warmupSets(id, SES.sets[id][0].w);
+    if (!SES.sets[id]) { SES.bw[id] = !!sg.bw; SES.sets[id] = [...Array(n)].map(() => ({w: sg.bw ? '' : (sg.w ?? ''), r: '', done: false})); }
+    const canW = WEIGHTED(e.kind), bw = canW && !!SES.bw[id];
+    const unit = e.kind === 'a' ? 'кг помощи' : (e.unit || 'кг');
+    const wu = bw ? [] : warmupSets(id, SES.sets[id][0].w);
     return `<section class="card" data-ex="${id}">
-      <div class="row between" style="align-items:flex-start"><button class="item" style="padding:0;grid-template-columns:46px 1fr" data-act="ex" data-id="${id}">${thumb(id)}<div><div class="t">${esc(e.name)}</div><div class="s">${n} × ${lo}–${hi} ${note || ''}</div></div></button>
+      <div class="row between" style="align-items:flex-start;gap:8px"><button class="item" style="padding:0;grid-template-columns:46px 1fr" data-act="ex" data-id="${id}">${thumb(id)}<div><div class="t">${esc(e.name)}</div><div class="s">${n} × ${lo}–${hi} ${note || ''}</div></div></button>
       ${opt?.alt ? `<button class="btn ghost sm" data-act="swap" data-id="${id0}">Заменить</button>` : ''}</div>
-      <p class="small muted">${sg.w != null && showW ? 'Цель: ' + fmtKg(sg.w) + ' ' + unitOf(e) + ' × ' + sg.target + '. ' : ''}${sg.why}</p>
-      ${wu.length ? `<div class="warmups"><span>Разминочные:</span>${wu.map((x, i) => `<button data-act="wu" data-id="${id}" data-i="${i}" aria-pressed="${!!SES.wu[id + i]}">${fmtKg(x.w)} × ${x.r}</button>`).join('')}</div>` : ''}
-      <div class="setrow small muted"><span class="n">#</span><span>${showW ? unitOf(e) : '—'}</span><span>${e.kind === 't' ? 'сек' : 'повторы'}</span><span></span></div>
+      ${past ? '' : `<p class="small muted">${canW && !bw && sg.w != null ? 'Цель: ' + esc(wLabel(e, sg.w, false)) + ' × ' + sg.target + '. ' : ''}${sg.why}</p>`}
+      ${canW ? `<div class="wtoggle" role="group" aria-label="Вес"><button data-act="sbw" data-id="${id}" data-v="0" aria-pressed="${!bw}">${e.kind === 'a' ? 'С помощью' : e.kind === 'bw' ? 'С отягощением' : 'С весом'}</button><button data-act="sbw" data-id="${id}" data-v="1" aria-pressed="${bw}">${e.kind === 'a' ? 'Без помощи' : 'Без веса'}</button></div>` : ''}
+      ${wu.length && !past ? `<div class="warmups"><span>Разминочные:</span>${wu.map((x, i) => `<button data-act="wu" data-id="${id}" data-i="${i}" aria-pressed="${!!SES.wu[id + i]}">${fmtKg(x.w)} × ${x.r}</button>`).join('')}</div>` : ''}
+      <div class="setrow small muted"><span class="n">#</span><span>${canW && !bw ? unit : canW ? (e.kind === 'a' ? 'без помощи' : 'без веса') : '—'}</span><span>${e.kind === 't' ? 'сек' : 'повторы'}</span><span></span></div>
       ${SES.sets[id].map((s, i) => `<div class="setrow"><span class="n">${i + 1}</span>
-        <input class="inp" id="s-${id}-${i}-w" data-set="${id}|${i}|w" type="number" step="0.5" inputmode="decimal" value="${s.w}" ${showW ? '' : 'disabled placeholder="—"'} aria-label="Вес, подход ${i + 1}">
+        ${canW && !bw ? `<input class="inp" id="s-${id}-${i}-w" data-set="${id}|${i}|w" type="number" step="0.5" inputmode="decimal" value="${s.w}" placeholder="кг" aria-label="Вес, подход ${i + 1}">` : `<span class="inp nobw">${canW ? (e.kind === 'a' ? 'без помощи' : 'свой вес') : (e.kind === 'band' ? 'резинка' : '—')}</span>`}
         <input class="inp" id="s-${id}-${i}-r" data-set="${id}|${i}|r" type="number" inputmode="numeric" value="${s.r}" placeholder="${hi}" aria-label="Повторы, подход ${i + 1}">
         <button class="ok" data-act="done" data-id="${id}" data-i="${i}" aria-pressed="${s.done}" aria-label="Подход выполнен">✓</button></div>`).join('')}
     </section>`;
   }).join('');
   const chk = (grp, id, dose) => `<label class="chk"><input type="checkbox" data-chk="${grp}|${id}" ${SES[grp][id] ? 'checked' : ''}><span>${esc(getItem(id).name)}</span><span class="small muted">${esc(dose)}</span></label>`;
-  openSheet(sheetTop(`Тренировка <em>${k}</em>`, `<span class="tag day">${el} мин</span>`) + `
-    <p class="small muted">${p.title}. Веса подставлены по прошлой тренировке, экран не погаснет до конца.</p>
-    <section class="card"><h3>Разминка</h3><div>${WARM.map(w => chk('warm', w.id, w.dose)).join('')}</div></section>
-    <section class="card"><h3>Активация</h3><div>${p.act.map(a => chk('act', a.ex, a.sets + ' × ' + a.reps)).join('')}</div></section>
+  const title = past ? `${SES.editId ? 'Правка' : 'Тренировка'} <em>${k}</em>` : `Тренировка <em>${k}</em>`;
+  openSheet(sheetTop(title, past ? `<span class="tag day">${fdate(SES.date)}</span>` : `<span class="tag day">${el} мин</span>`) + `
+    <p class="small muted">${p.title}. ${past ? (SES.editId ? 'Поправь веса и повторы и нажми «Сохранить».' : 'Тренировка задним числом: впиши, что делала, и отметь подходы галочкой.') : 'Веса подставлены по прошлой тренировке, экран не погаснет до конца.'}</p>
+    ${past ? '' : `<section class="card"><h3>Разминка</h3><div>${WARM.map(w => chk('warm', w.id, w.dose)).join('')}</div></section>
+    <section class="card"><h3>Активация</h3><div>${p.act.map(a => chk('act', a.ex, a.sets + ' × ' + a.reps)).join('')}</div></section>`}
     ${mainHtml}
-    <section class="card"><h3>Мобильность таза</h3><div>${p.mob.map(id => chk('mob', id, PDFMAP[id].reps || '')).join('')}</div></section>
-    <button class="btn day block" data-act="finish">Завершить тренировку</button>
+    ${past ? '' : `<section class="card"><h3>Мобильность таза</h3><div>${p.mob.map(id => chk('mob', id, PDFMAP[id].reps || '')).join('')}</div></section>`}
+    <button class="btn day block" data-act="finish">${past ? 'Сохранить' : 'Завершить тренировку'}</button>
     <div class="timer" id="timer" hidden><span>Отдых</span><b id="tleft">1:30</b><button class="btn sm" data-act="tstop">Пропустить</button></div>`, 'full d' + k);
 }
 function stopBeeps() { BEEPS.forEach(o => { try { o.stop(); } catch (e) {} }); BEEPS = []; }
@@ -689,12 +798,17 @@ function confetti() {
 }
 function finishSession() {
   clearInterval(TIMER); stopBeeps(); wake(false);
-  const sets = {}; Object.entries(SES.sets).forEach(([id, arr]) => { const d = arr.filter(s => s.done).map(s => ({w: +s.w || 0, r: +s.r || 0, done: true})); if (d.length) sets[id] = d; });
-  const end = Date.now(); const min = Math.max(1, Math.round((end - SES.start) / 60000));
-  const kcal = Math.round(metKcal(6, curWeight(), Math.min(7, min)) + metKcal(5, curWeight(), Math.max(0, min - 15)) + metKcal(2.5, curWeight(), Math.min(8, min)));
-  const log = {id: 'l' + end, date: iso(new Date(SES.start)), day: SES.k, start: SES.start, end, sets, kcal, avgHR: null, src: 'оценка forma'};
+  const sets = {}; Object.entries(SES.sets).forEach(([id, arr]) => { const bw = SES.bw && SES.bw[id]; const d = arr.filter(s => s.done).map(s => ({w: bw ? 0 : (+String(s.w).replace(',', '.') || 0), r: +s.r || 0, done: true})); if (d.length) sets[id] = d; });
+  const old = SES.editId ? S.logs.find(l => l.id === SES.editId) : null;
+  let start = SES.start, end = Date.now();
+  if (old) { start = old.start; end = old.end; } else if (SES.date) { const d0 = parseISO(SES.date); d0.setHours(18, 30); start = +d0; end = start + 80 * 60000; }
+  const min = Math.max(1, Math.round((end - start) / 60000));
+  const kcal = old ? old.kcal : Math.round(metKcal(6, curWeight(), Math.min(7, min)) + metKcal(5, curWeight(), Math.max(0, min - 15)) + metKcal(2.5, curWeight(), Math.min(8, min)));
+  const log = {id: old ? old.id : 'l' + end, date: SES.date || iso(new Date(start)), day: SES.k, start, end, sets, kcal, avgHR: old ? old.avgHR : null, src: old ? old.src : (SES.date ? 'внесено вручную' : 'оценка forma')};
   const nDone = Object.values(sets).reduce((a, x) => a + x.length, 0);
-  if (nDone) { log.prs = prsFor(log); S.logs.push(log); save(); }
+  if (old && nDone) S.logs = S.logs.filter(l => l.id !== old.id);
+  if (nDone) { log.prs = prsFor(log); S.logs.push(log); S.logs.sort((a, b) => a.start - b.start); save(); }
+  if (SES.date) { const wasEdit = !!old; SES = null; saveSes(); closeSheet(); render(); toast(nDone ? (wasEdit ? 'Тренировка обновлена' : 'Тренировка за ' + fdate(log.date) + ' сохранена') : 'Подходы не отмечены — ничего не сохранено'); return; }
   const prs = log.prs || [];
   const pr = proteinFor(SES.k); const k = SES.k;
   openSheet(sheetTop('Готово') + `
@@ -946,6 +1060,7 @@ function mergeState(a, b) {
   const health = {...(b.health || {})}; Object.entries(a.health || {}).forEach(([d, v]) => health[d] = Object.assign({}, health[d], v));
   const newer = (a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b;
   return {...newer, sample: !!(a.sample && b.sample), onboarded: !!(a.onboarded || b.onboarded), google: a.google || b.google,
+    weights: (() => { const w = {...(b.weights || {})}; Object.entries(a.weights || {}).forEach(([k, v]) => { if (!w[k] || (v.at || 0) >= (w[k].at || 0)) w[k] = v; }); return w; })(),
     logs: Object.values(logs).sort((x, y) => x.start - y.start), body: Object.values(body).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0),
     health, settings: {...(b.settings || {}), ...(a.settings || {})}};
 }
@@ -1033,7 +1148,7 @@ document.addEventListener('click', e => {
   if (b.dataset.tab) { TAB = b.dataset.tab; render(); window.scrollTo(0, 0); return; }
   const a = b.dataset.act;
   if (a === 'ex') exSheet(b.dataset.id);
-  else if (a === 'close') { closeSheet(); }
+  else if (a === 'close') { const wasW = !!document.querySelector('#sheet .wlist'); closeSheet(); if (wasW) render(); }
   else if (a === 'ptab') { PLANTAB = b.dataset.k; render(); }
   else if (a === 'gotoplan') { PLANTAB = b.dataset.k; TAB = 'plan'; render(); window.scrollTo(0, 0); }
   else if (a === 'gotoprog') { TAB = 'journal'; JTAB = 'progress'; render(); window.scrollTo(0, 0); }
@@ -1066,11 +1181,24 @@ document.addEventListener('click', e => {
   else if (a === 'gsync') { if (gValid()) driveSync(true); else gSignIn(); }
   else if (a === 'glogout') gSignOut();
   else if (a === 'backups') backupsSheet();
+  else if (a === 'weights') weightsSheet();
+  else if (a === 'wbw') { const id = b.dataset.id; const c = curW(id); const cur = (S.weights || {})[id] || {w: c.w, bw: !!c.bw || (EX[id].kind === 'bw' && !c.w)}; setW(id, cur.w, !cur.bw); wSync(id); }
+  else if (a === 'wstep') { const id = b.dataset.id, e = EX[id]; const inp = $('#w-' + id); const v = parseFloat(String(inp.value).replace(',', '.')) || 0; const nv = Math.max(0, r1(v + (+b.dataset.d) * (e.step || 2.5))); setW(id, nv, false); wSync(id); inp.value = String(nv); }
+  else if (a === 'day') dayAction(b.dataset.date);
+  else if (a === 'pastday') pastDaySheet(TODAY_ISO);
+  else if (a === 'pdk') { document.querySelectorAll('[data-act=pdk]').forEach(x => x.setAttribute('aria-pressed', x === b)); }
+  else if (a === 'pdfill' || a === 'pdquick') { const date = $('#pd-date').value || TODAY_ISO; if (date > TODAY_ISO) { toast('Выбери сегодняшний или прошедший день'); return; } const k = document.querySelector('[data-act=pdk][aria-pressed=true]').dataset.k; if (a === 'pdquick') quickLog(date, k); else startSession(k, {date}); }
+  else if (a === 'calm') { const [y, m] = CALM.split('-').map(Number); const d = new Date(y, m - 1 + (+b.dataset.d), 1); CALM = iso(d).slice(0, 7); render(); }
+  else if (a === 'editlog') { const l = S.logs.find(x => x.id === b.dataset.id); if (l) startSession(l.day, {editId: l.id}); }
+  else if (a === 'dellog') { if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Точно удалить?'; return; } S.logs = S.logs.filter(x => x.id !== b.dataset.id); save(); closeSheet(); render(); toast('Тренировка удалена'); }
+  else if (a === 'sbw') { const id = b.dataset.id; SES.bw[id] = b.dataset.v === '1'; if (!SES.bw[id]) { const sg = suggest(id, SES.k); SES.sets[id].forEach(x => { if (!x.w && !x.done) x.w = sg.w || ''; }); } saveSes(); const y = $('#sheet .sheet').scrollTop; renderSession(); $('#sheet .sheet').scrollTop = y; }
+
   else if (a === 'restorecopy') restoreCopy(b.dataset.id, b);
 });
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'libq') { LIBQ = t.value; const pos = t.selectionStart; render(); const n = $('#libq'); n.focus(); n.setSelectionRange(pos, pos); }
+  else if (t.dataset.w) { const v = parseFloat(String(t.value).replace(',', '.')); setW(t.dataset.w, isNaN(v) ? null : v, false); }
   else if (t.dataset.set && SES) { const [id, i, f] = t.dataset.set.split('|'); const arr = SES.sets[id]; const old = arr[+i][f]; arr[+i][f] = t.value;
     if (f === 'w') arr.forEach((x, j) => { if (j > +i && !x.done && String(x.w) === String(old)) { x.w = t.value; const el = $(`#s-${id}-${j}-w`); if (el) el.value = t.value; } });
     saveSes(); }
