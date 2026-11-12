@@ -929,7 +929,13 @@ function settingsSheet() {
     <section class="card"><h3>Резервная копия</h3><p class="small muted">Все тренировки и веса хранятся только на этом устройстве. Сохраняй копию раз в пару недель — в «Файлы» или iCloud.</p>
       <div class="row wrap"><button class="btn line sm" data-act="export">Сохранить копию</button><label class="btn line sm" for="restore">Восстановить из файла</label><input type="file" id="restore" accept="application/json,.json" hidden></div></section>
     ${!S.logs.length && !S.sample ? '<section class="card flat"><h3>Посмотреть на примере</h3><p class="small muted">Загрузит 4 недели примерных тренировок, чтобы увидеть графики и прогноз. Потом удаляется одной кнопкой.</p><button class="btn ghost sm" data-act="demo">Загрузить пример</button></section>' : ''}
-    <section class="card flat">${aboutHtml()}</section>`);
+    <section class="card flat">${aboutHtml()}</section>
+    <p class="small muted" style="font-size:11px;opacity:.6">${diagText()}</p>`);
+}
+function diagText() {
+  try { const sh = document.querySelector('.shell'); let mb = 0, who = '';
+    document.querySelectorAll('body *').forEach(e => { if (e.closest('#sheet') || e.closest('details:not([open])>.fb')) return; const cs = getComputedStyle(e); if (cs.position === 'fixed' || cs.display === 'none') return; const b = e.getBoundingClientRect().bottom + scrollY; if (b > mb) { mb = b; who = e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className ? '.' + e.className.split(' ')[0] : ''); } });
+    return `экран ${TAB} · документ ${document.documentElement.scrollHeight} · контент ${Math.round(sh ? sh.getBoundingClientRect().height : 0)} · окно ${innerHeight} · ниже всех: ${who} ${Math.round(mb)}`; } catch (e) { return ''; }
 }
 
 function syncSheet() {
