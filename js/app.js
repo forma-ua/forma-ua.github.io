@@ -40,7 +40,7 @@ const START = {hip_thrust:30,leg_press:50,lat_pulldown:22.5,chest_press:15,seate
   rdl:8,bulgarian:0,leg_curl:15,chinup_grav:35,dips_grav:30,cable_kickback:5,triceps_pushdown:10,pullup_grav:40,hyperext:0,
   hip_adduction:25,pec_deck:15,triceps_machine:15,hammer:4,machine_crunch:15};
 function seed() {
-  const st = {sample:true, onboarded:true, profile:{sex:'f',age:30,height:166,restHR:64,goal:'recomp',level:'beginner',freq:3,activity:1.375},
+  const st = {sample:true, onboarded:true, profile:{set:true,sex:'f',age:30,height:166,restHR:64,goal:'recomp',level:'beginner',freq:3,activity:1.375},
     logs:[], body:[], health:{}, settings:{}};
   // workouts: last 4 weeks of Mon/Wed/Fri before today
   const days = [];
@@ -314,7 +314,7 @@ function vToday() {
   const resume = SES ? `<button class="note" data-act="resume" style="border:0;text-align:left"><b>Тренировка ${SES.k} не завершена.</b> Нажми, чтобы продолжить.</button>` : '';
   return `<div class="screen">
     <p class="greet">${greeting()}</p>
-    ${resume}${hero}
+    ${resume}${profileCard()}${hero}
     <section class="card"><div class="ringrow">
       <div class="ring">${ringSVG(['A','B','C'].map(x => ({frac: ws.done.has(x) ? 1 : 0, color: 'var(--d' + x + ')'})))}<div class="c"><div><b>${ws.done.size}/3</b><span>на неделе</span></div></div></div>
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0"><div class="weekdays">${week}</div>
@@ -575,7 +575,7 @@ function openSheet(html, cls = '') {
   closeSheet();
   const w = document.createElement('div'); w.className = 'sheet-wrap'; w.id = 'sheet';
   w.innerHTML = `<div class="sheet ${cls}" role="dialog" aria-modal="true">${html}</div>`;
-  w.addEventListener('click', e => { if (e.target === w) closeSheet(); });
+  if (!cls.includes('welcome')) w.addEventListener('click', e => { if (e.target === w) closeSheet(); });
   document.body.appendChild(w); document.body.style.overflow = 'hidden';
 }
 function closeSheet() { const s = $('#sheet'); if (s) s.remove(); document.body.style.overflow = ''; }
@@ -846,22 +846,35 @@ function saveSes() { try { if (SES) localStorage.setItem('forma.ses', JSON.strin
 function loadSes() { try { const j = JSON.parse(localStorage.getItem('forma.ses')); if (j && Date.now() - j.start < 6 * 3600e3) SES = j; } catch (e) {} }
 
 function onboarding() {
-  openSheet(`<div class="grab"></div>
-    <div class="hero"><span class="eyebrow">Привет</span><h1>forma<span style="color:var(--hot)">.</span></h1><p>Три тренировки в неделю на всё тело, веса на следующий раз, белок и прогресс. Всё хранится только на этом телефоне.</p></div>
-    <form class="card" id="fo"><h3>Пара цифр для расчётов</h3>
-      <div class="grid2"><label class="f">Вес, кг<input class="inp" id="ob-w" type="number" step="0.1" inputmode="decimal" placeholder="61,5"></label><label class="f">Рост, см<input class="inp" id="ob-h" type="number" inputmode="numeric" placeholder="166"></label></div>
-      <div class="grid2"><label class="f">Возраст<input class="inp" id="ob-a" type="number" inputmode="numeric" placeholder="30"></label><label class="f">Пульс покоя<input class="inp" id="ob-r" type="number" inputmode="numeric" placeholder="64"></label></div>
-      <label class="f">Цель<select class="inp" id="ob-g"><option value="recomp">Рельеф, вес тот же</option><option value="cut">Похудеть</option><option value="bulk">Набрать мышцы</option></select></label>
-      <button class="btn block">Начать</button>
-      <p class="small muted">Пульс покоя можно взять в Apple Health. Всё меняется потом в настройках.</p></form>
-    <button class="btn google" data-act="glogin">${GOOGLE_G} Уже пользуюсь — войти через Google</button>
-    <button class="btn ghost" data-act="demo">Сначала посмотреть на примере</button>`);
+  openSheet(`<div class="welcome-in">
+    <div class="welcome-top"><div class="logo welcome-logo">forma<i>.</i></div>
+      <p class="welcome-lead">Тренировки, веса и белок — в одном спокойном месте.</p></div>
+    <ul class="welcome-list">
+      <li><b>A · B · C</b><span>три тренировки в неделю на всё тело</span></li>
+      <li><b>↑ вес</b><span>подскажет, сколько брать в следующий раз</span></li>
+      <li><b>PR</b><span>рекорды, восстановление мышц и прогноз</span></li>
+    </ul>
+    <div class="welcome-actions">
+      <button class="btn google block" data-act="glogin">${GOOGLE_G} Войти через Google</button>
+      <button class="btn line block" data-act="skipwelcome">Продолжить без входа</button>
+      <button class="btn-link" data-act="demo">Посмотреть на примере</button>
+      <p class="small muted" style="text-align:center">С Google копия хранится на твоём Google Диске — на новом телефоне всё восстановится.</p>
+    </div></div>`, 'full welcome');
+}
+function profileCard() {
+  if (S.profile.set || S.sample) return '';
+  return `<form class="card" id="fp2"><div class="row between"><h2>Пара цифр о тебе</h2><span class="tag hot">1 минута</span></div>
+    <p class="small muted">Для белка, рабочих весов и калькуляторов. Потом всё меняется в настройках.</p>
+    <div class="grid2"><label class="f">Вес, кг<input class="inp" id="ob-w" type="number" step="0.1" inputmode="decimal" placeholder="61,5" value="${S.body.length ? curWeight() : ''}"></label><label class="f">Рост, см<input class="inp" id="ob-h" type="number" inputmode="numeric" placeholder="166"></label></div>
+    <div class="grid2"><label class="f">Возраст<input class="inp" id="ob-a" type="number" inputmode="numeric" placeholder="30"></label><label class="f">Пульс покоя<input class="inp" id="ob-r" type="number" inputmode="numeric" placeholder="64"></label></div>
+    <label class="f">Цель<select class="inp" id="ob-g"><option value="recomp">Рельеф, вес тот же</option><option value="cut">Похудеть</option><option value="bulk">Набрать мышцы</option></select></label>
+    <button class="btn block">Сохранить</button></form>`;
 }
 function finishOnboarding() {
   const w = num('ob-w');
-  Object.assign(S.profile, {age: num('ob-a') || S.profile.age, height: num('ob-h') || S.profile.height, restHR: num('ob-r') || S.profile.restHR, goal: $('#ob-g').value});
-  if (w) S.body.push({date: TODAY_ISO, weight: r1(w)});
-  S.onboarded = true; save(); closeSheet(); render(); toast('Готово. Первая тренировка — ' + PLAN[nextWorkout().key].day.toLowerCase());
+  Object.assign(S.profile, {age: num('ob-a') || S.profile.age, height: num('ob-h') || S.profile.height, restHR: num('ob-r') || S.profile.restHR, goal: $('#ob-g').value, set: true});
+  if (w && (!S.body.length || curWeight() !== r1(w))) { S.body = S.body.filter(b => b.date !== TODAY_ISO || b.waist); S.body.push({date: TODAY_ISO, weight: r1(w)}); S.body.sort((x, y) => x.date < y.date ? -1 : 1); }
+  S.onboarded = true; save(); render(); toast('Сохранено. Первая тренировка — ' + PLAN[nextWorkout().key].day.toLowerCase());
 }
 
 
@@ -887,7 +900,7 @@ function gSignIn(then) {
     callback: async r => {
       if (r.error) { toast('Вход не удался. Попробуй ещё раз.'); return; }
       GTOK = r.access_token; GEXP = Date.now() + (Number(r.expires_in || 3600) - 60) * 1000;
-      try { sessionStorage.setItem('forma.gtok', JSON.stringify([GTOK, GEXP])); } catch (e) {}
+      try { localStorage.setItem('forma.gtok', JSON.stringify([GTOK, GEXP])); } catch (e) {}
       try { await gProfile(); } catch (e) {}
       await driveSync(true); const t = GTHEN; GTHEN = null; if (t) t();
     },
@@ -934,10 +947,10 @@ async function driveSync(interactive) {
 }
 function gSignOut() {
   try { if (GTOK) google.accounts.oauth2.revoke(GTOK, () => {}); } catch (e) {}
-  GTOK = null; GEXP = 0; try { sessionStorage.removeItem('forma.gtok'); } catch (e) {}
+  GTOK = null; GEXP = 0; try { localStorage.removeItem('forma.gtok'); } catch (e) {}
   delete S.google; saveLocal(); closeSheet(); render(); toast('Ты вышла из Google. Данные остались на телефоне.');
 }
-function gRestore() { try { const [t, e] = JSON.parse(sessionStorage.getItem('forma.gtok')) || []; if (t && Date.now() < e) { GTOK = t; GEXP = e; } } catch (e) {} }
+function gRestore() { try { const [t, e] = JSON.parse(localStorage.getItem('forma.gtok')) || []; if (t && Date.now() < e) { GTOK = t; GEXP = e; } } catch (e) {} }
 function googleCard() {
   if (S.google) {
     const ls = S.google.lastSync ? new Date(S.google.lastSync) : null;
@@ -983,7 +996,8 @@ document.addEventListener('click', e => {
   else if (a === 'onbdone') finishOnboarding();
   else if (a === 'gotorec') { TAB = 'journal'; JTAB = 'records'; render(); window.scrollTo(0, 0); }
   else if (a === 'wu') { const key = b.dataset.id + b.dataset.i; SES.wu[key] = !SES.wu[key]; b.setAttribute('aria-pressed', !!SES.wu[key]); saveSes(); }
-  else if (a === 'glogin') gSignIn(() => { if (!S.onboarded && (S.logs.length || S.body.length)) { S.onboarded = true; saveLocal(); } closeSheet(); render(); });
+  else if (a === 'glogin') gSignIn(() => { S.onboarded = true; saveLocal(); closeSheet(); render(); });
+  else if (a === 'skipwelcome') { S.onboarded = true; saveLocal(); closeSheet(); render(); }
   else if (a === 'gsync') { if (gValid()) driveSync(true); else gSignIn(); }
   else if (a === 'glogout') gSignOut();
 });
@@ -1001,13 +1015,14 @@ document.addEventListener('submit', e => {
   e.preventDefault(); const f = e.target;
   if (f.id === 'fw') { const v = num('fw-w'); if (!v) return toast('Впиши вес в килограммах'); S.body = S.body.filter(b => b.date !== $('#fw-d').value || b.waist); S.body.push({date: $('#fw-d').value, weight: v}); S.body.sort((x, y) => x.date < y.date ? -1 : 1); save(); render(); toast('Вес сохранён'); }
   if (f.id === 'fm') { const w = num('fm-w'), h = num('fm-h'), t = num('fm-t'); if (!w && !h) return toast('Заполни хотя бы талию или ягодицы'); S.body.push({date: TODAY_ISO, weight: curWeight(), waist: w, hips: h, thigh: t}); S.body.sort((x, y) => x.date < y.date ? -1 : 1); save(); render(); toast('Замер сохранён'); }
-  if (f.id === 'fp') { Object.assign(S.profile, {age: num('pf-a'), height: num('pf-h'), restHR: num('pf-r'), goal: $('#pf-g').value}); save(); closeSheet(); render(); toast('Профиль сохранён'); }
+  if (f.id === 'fp') { Object.assign(S.profile, {age: num('pf-a'), height: num('pf-h'), restHR: num('pf-r'), goal: $('#pf-g').value, set: true}); save(); closeSheet(); render(); toast('Профиль сохранён'); }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (SES && $('#sheet')) return; closeSheet(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if ((SES && $('#sheet')) || $('#sheet .welcome')) return; closeSheet(); } });
 document.addEventListener('change', e => { if (e.target.id === 'restore') restoreBackup(e.target.files[0]); });
 
-document.addEventListener('submit', e => { if (e.target.id === 'fo') { e.preventDefault(); finishOnboarding(); } });
+document.addEventListener('submit', e => { if (e.target.id === 'fp2') { e.preventDefault(); finishOnboarding(); } });
 load(); loadSes(); gRestore();
+if (S.google && !S.onboarded) { S.onboarded = true; saveLocal(); }
 $('#aside').innerHTML = `<div class="aside-stack"><div class="card">${aboutHtml()}</div></div>`;
 if (location.hash.startsWith('#sync=')) {
   try { const b = location.hash.slice(6).replace(/-/g, '+').replace(/_/g, '/'); const txt = decodeURIComponent(escape(atob(b))); setTimeout(() => toast(mergeSync(txt)), 300); } catch (e) {}
