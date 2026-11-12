@@ -26,12 +26,20 @@ function toast(msg) {
 // ================= storage =================
 const KEY = 'forma.v1';
 let S;
+// вес из Здоровья иногда приходит в фунтах (118 lb = 53,5 кг)
+function lbToKg(w, date) {
+  if (!w) return w; const prev = (S.body || []).filter(b => b.weight && b.date !== date && !b.lb).map(b => b.weight);
+  const ref = prev.length ? prev[prev.length - 1] : S.profile && S.profile.weight;
+  const k = w / 2.20462; const looksLb = ref ? (w / ref > 1.7 && w / ref < 2.7) : w > 100;
+  return looksLb ? Math.round(k * 10) / 10 : w;
+}
+function fixLbBody() { if (!S || !Array.isArray(S.body) || S.settings?.lbFix) return; S.body.forEach(b => { if (b.weight) { const k = lbToKg(b.weight, b.date); if (k !== b.weight) b.weight = k; } }); S.settings = S.settings || {}; S.settings.lbFix = 1; }
 function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 function save() { S.updatedAt = Date.now(); saveLocal(); if (S.google) { if (gValid()) { clearTimeout(SYNC_T); SYNC_T = setTimeout(() => driveSync(false), 2500); } else S.google.pending = true; } }
 const emptyState = () => ({sample:false, profile:{sex:'f',age:30,height:166,restHR:64,goal:'recomp',level:'beginner',freq:3,activity:1.375}, logs:[], body:[], health:{}, settings:{}, onboarded:false});
 let FRESH = false;
 function load() {
-  try { const raw = localStorage.getItem(KEY); if (raw) { S = JSON.parse(raw); return; } } catch (e) {}
+  try { const raw = localStorage.getItem(KEY); if (raw) { S = JSON.parse(raw); fixLbBody(); return; } } catch (e) {}
   S = emptyState(); FRESH = true;
 }
 
@@ -935,7 +943,7 @@ function syncSheet() {
         <li>«Получить значение для ключа» <code>from</code>, затем то же для <code>to</code>.</li>
         <li>«Найти образцы здоровья»: тип <i>Пульс</i>, дата начала между <code>from</code> и <code>to</code> → «Вычислить статистику: Среднее». Это <code>workoutHR</code>.</li>
         <li>То же для <i>Активная энергия</i> → «Сумма». Это <code>workoutKcal</code>.</li>
-        <li>«Найти образцы здоровья» за сегодня и «Сумма» для: <i>Активная энергия</i> (<code>activeKcal</code>), <i>Шаги</i> (<code>steps</code>), <i>Потреблённая энергия</i> (<code>eatKcal</code>), <i>Белки</i> (<code>protein</code>), <i>Общие жиры</i> (<code>fat</code>), <i>Углеводы</i> (<code>carbs</code>). Питание туда пишет Yazio.</li>
+        <li>«Найти образцы здоровья» за сегодня и «Сумма» для: <i>Активная энергия</i> (<code>activeKcal</code>), <i>Шаги</i> (<code>steps</code>), <i>Энергетическая ценность</i> (<code>eatKcal</code>), <i>Белки</i> (<code>protein</code>), <i>Общие жиры</i> (<code>fat</code>), <i>Углеводы</i> (<code>carbs</code>). Питание туда пишет Yazio.</li>
         <li><i>Вес</i>: последний образец, лимит 1 → <code>weight</code>.</li>
         <li>«Словарь» со всеми ключами выше + <code>date</code> (текущая дата в формате ГГГГ-ММ-ДД) → «Скопировать в буфер обмена».</li>
       </ol>
@@ -955,11 +963,12 @@ function syncResultSheet() {
   const food = ['protein','fat','carbs'], foodN = food.filter(has).length;
   const tips = []; const tx = L.txt || {};
   const val = k => k === 'workoutHR' && L.lowHR ? `<span class="tag warn">${L.lowHR} — не тренировка</span>` : has(k) ? `<b>${fmtKg(r[k])}</b>` : k === 'eatKcal' && L.est ? `<b>≈${L.est}</b>` : k === 'workoutHR' && L.lowHR ? `<span class="tag warn">${L.lowHR} — не тренировка</span>` : tx[k] ? `<span class="tag warn">«${esc(tx[k])}»</span>` : '<span class="tag warn">нет данных</span>';
-  if (!has('eatKcal') && L.est) tips.push('Калории еды не пришли из Здоровья, поэтому forma. посчитала их по белкам, жирам и углеводам (≈' + L.est + ' ккал) — это почти точно. Чтобы приходили напрямую, включи «Потреблённая энергия» в доступе YAZIO и «Быстрых команд» (см. ниже).');
+  if (!has('eatKcal') && L.est) tips.push('Калории еды не пришли из Здоровья, поэтому forma. посчитала их по белкам, жирам и углеводам (≈' + L.est + ' ккал) — это почти точно. Чтобы приходили напрямую, включи «Энергетическая ценность» в доступе YAZIO и «Быстрых команд» (см. ниже).');
+  if (L.lb) tips.push('Вес пришёл как ' + fmtKg(L.lb) + ' — это фунты, forma. перевела в ' + fmtKg(r.weight) + ' кг. Чтобы приходили килограммы: в команде в шаге «Найти Данные Здоровья» с типом Weight поставь «Единица» → кг.');
   if (L.lowHR) tips.push('Пульс ' + L.lowHR + ' — это покой, а не тренировка: команда берёт последние 2 часа. Запускай её сразу после тренировки — тогда пульс и калории привяжутся к ней.');
   if (!foodN) tips.push('Питание не пришло. Проверь: Настройки iPhone → Приложения → Здоровье → Доступ к данным и устройства → YAZIO — запись питания включена; и что сегодня в Yazio уже есть записи.');
-  else if (foodN < 3) tips.push('Часть питания пришла, часть нет — проверь, что в YAZIO включена запись всех пунктов: Потреблённая энергия, Белки, Жиры, Углеводы.');
-  if (!has('activeKcal') || (!has('eatKcal'))) tips.push('Калории в Здоровье — это отдельные типы «Активная энергия» и «Потреблённая энергия», и доступ «Быстрых команд» к каждому типу включается отдельно. Открой Настройки → Приложения → Здоровье → Доступ к данным и устройства → Быстрые команды и включи «Активная энергия» и «Потреблённая энергия» (проще — «Включить все»).');
+  else if (foodN < 3) tips.push('Часть питания пришла, часть нет — проверь, что в YAZIO включена запись всех пунктов: Энергетическая ценность, Белки, Жиры, Углеводы.');
+  if (!has('activeKcal') || (!has('eatKcal'))) tips.push('Калории в Здоровье — это отдельные типы «Активная энергия» и «Энергетическая ценность», и доступ «Быстрых команд» к каждому типу включается отдельно. Открой Настройки → Приложения → Здоровье → Доступ к данным и устройства → Быстрые команды и включи «Активная энергия» и «Энергетическая ценность» (проще — «Включить все»).');
   if ((has('workoutHR') || has('workoutKcal')) && !L.hadLog) tips.push('Пульс тренировки пришёл, но сегодня в forma. нет тренировки — запусти команду после того, как отметишь тренировку.');
   openSheet(sheetTop('Что пришло') + `<div class="list">${F.map(([k, l, src]) => `<div class="item" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t">${l}</div><div class="s">${src}</div></div><div class="r">${val(k)}</div></div>`).join('')}</div>
     ${tips.length ? `<section class="note"><b>Что проверить</b><ul class="clean small" style="margin-top:6px">${tips.map(t => `<li>${t}</li>`).join('')}</ul></section>` : '<section class="note"><b>Всё пришло.</b> Можно запускать команду после каждой тренировки и вечером, когда внесёшь еду.</section>'}
@@ -976,14 +985,14 @@ function mergeSync(text) {
   const h = S.health[date] = S.health[date] || {}; let n = 0;
   ['activeKcal','steps','eatKcal','protein','fat','carbs'].forEach(k => { const v = toNum(j[k]); if (v) { h[k] = Math.round(v); n++; } });
   if (!toNum(j.eatKcal) && (h.protein || h.fat || h.carbs)) { h.eatKcal = Math.round((h.protein || 0) * 4 + (h.fat || 0) * 9 + (h.carbs || 0) * 4); h.eatEst = 1; } else if (toNum(j.eatKcal)) delete h.eatEst;
-  const w = toNum(j.weight);
+  const w0 = toNum(j.weight), w = lbToKg(w0, date);
   if (w) { S.body = S.body.filter(b => b.date !== date || b.waist); const m = S.body.find(b => b.date === date); if (m) m.weight = r1(w); else S.body.push({date, weight: r1(w)}); S.body.sort((x, y) => x.date < y.date ? -1 : 1); n++; }
   const hr0 = toNum(j.workoutHR), hr = hr0 && hr0 >= 90 ? hr0 : null, kc = toNum(j.workoutKcal);
   const log = S.logs.filter(l => l.date === date).pop();
   if (log && (hr || kc)) { if (hr) log.avgHR = Math.round(hr); if (kc) log.kcal = Math.round(kc + metKcal(1, curWeight(), (log.end - log.start) / 60000)); log.src = 'Apple Watch'; n++; }
   const raw = {}; ['protein','eatKcal','fat','carbs','activeKcal','steps','weight','workoutHR','workoutKcal'].forEach(k => raw[k] = toNum(j[k]));
   const txt = {}; ['eatKcal','activeKcal','workoutKcal'].forEach(k => { if (j[k] != null && j[k] !== '' && !toNum(j[k])) txt[k] = String(j[k]).slice(0, 40); });
-  S.settings.lastSyncRaw = {at: Date.now(), raw, txt, est: h.eatEst ? h.eatKcal : null, lowHR: hr0 && !hr ? Math.round(hr0) : null, hadLog: !!log};
+  raw.weight = w || null; S.settings.lastSyncRaw = {at: Date.now(), raw, txt, lb: w0 && w !== w0 ? w0 : null, est: h.eatEst ? h.eatKcal : null, lowHR: hr0 && !hr ? Math.round(hr0) : null, hadLog: !!log};
   if (!n) { save(); return 'В данных нет знакомых полей — проверь названия ключей.'; }
   S.settings.lastSync = TODAY_ISO; save(); closeSheet(); render(); setTimeout(syncResultSheet, 250);
   return 'Синхронизировано за ' + fdate(date);
