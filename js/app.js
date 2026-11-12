@@ -213,7 +213,7 @@ const TABS = [['today','Сегодня'],['plan','План'],['lib','Упраж�
 function render() {
   const acct = S.google?.picture ? `<button class="icon-btn" data-act="settings" aria-label="Аккаунт и настройки"><img src="${esc(S.google.picture)}" alt="" referrerpolicy="no-referrer"></button>`
     : `<button class="icon-btn" data-act="settings" aria-label="Профиль и настройки">${ICONS.gear}</button>`;
-  const cloud = S.google && !gValid() && S.google.pending ? '<button class="pill warn" data-act="gsync">Сохранить в Google</button>' : '';
+  const cloud = S.google && !gValid() && (S.google.pending || weeklyDue()) ? '<button class="pill warn" data-act="gsync">Сохранить в Google</button>' : '';
   $('#app').innerHTML = `
     <header class="top">
       <div class="logo" aria-label="forma">forma<i>.</i></div>
@@ -314,7 +314,7 @@ function vToday() {
   const resume = SES ? `<button class="note" data-act="resume" style="border:0;text-align:left"><b>Тренировка ${SES.k} не завершена.</b> Нажми, чтобы продолжить.</button>` : '';
   return `<div class="screen">
     <p class="greet">${greeting()}</p>
-    ${resume}${profileCard()}${hero}
+    ${resume}${profileCard()}${hero}${backupReminder()}
     <section class="card"><div class="ringrow">
       <div class="ring">${ringSVG(['A','B','C'].map(x => ({frac: ws.done.has(x) ? 1 : 0, color: 'var(--d' + x + ')'})))}<div class="c"><div><b>${ws.done.size}/3</b><span>на неделе</span></div></div></div>
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0"><div class="weekdays">${week}</div>
@@ -794,6 +794,7 @@ function mergeSync(text) {
   return 'Синхронизировано за ' + fdate(date);
 }
 function exportBackup() {
+  S.settings.fileBackupAt = Date.now(); saveLocal(); setTimeout(render, 300);
   const name = 'forma-backup-' + TODAY_ISO + '.json';
   const file = new File([JSON.stringify(S)], name, {type: 'application/json'});
   if (navigator.canShare && navigator.canShare({files: [file]})) { navigator.share({files: [file], title: name}).catch(() => {}); return; }
@@ -959,7 +960,9 @@ async function driveSync(interactive) {
     if (f) await gFetch(`https://www.googleapis.com/upload/drive/v3/files/${f.id}?uploadType=media`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body});
     else { const fd = new FormData(); fd.append('metadata', new Blob([JSON.stringify({name: 'forma.json', parents: ['appDataFolder']})], {type: 'application/json'})); fd.append('file', new Blob([body], {type: 'application/json'}));
       await gFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {method: 'POST', body: fd}); }
-    saveLocal(); if (interactive) { if ($('#sheet') && !SES) closeSheet(); render(); toast('Сохранено в Google Диске'); }
+    let weekly = false;
+    if (weeklyDue()) { await weeklySnapshot(body); weekly = true; }
+    saveLocal(); if (interactive || weekly) { if (interactive && $('#sheet') && !SES) closeSheet(); render(); toast(weekly ? 'Сохранена еженедельная копия в Google Диске' : 'Сохранено в Google Диске'); }
   } catch (e) {
     if (S.google) S.google.pending = true; saveLocal();
     if (interactive) toast(e.message === 'auth' ? 'Нужно войти в Google ещё раз' : 'Не получилось связаться с Google Диском');
@@ -972,12 +975,52 @@ function gSignOut() {
   delete S.google; saveLocal(); closeSheet(); render(); toast('Ты вышла из Google. Данные остались на телефоне.');
 }
 function gRestore() { try { const [t, e] = JSON.parse(localStorage.getItem('forma.gtok')) || []; if (t && Date.now() < e) { GTOK = t; GEXP = e; } } catch (e) {} }
+const weeklyDue = () => !!S.google && (S.logs.length || S.body.length) && (!S.google.weeklyAt || Date.now() - S.google.weeklyAt > 7 * 864e5);
+const fileBackupDue = () => !S.google && !S.sample && S.logs.length > 0 && (!S.settings.fileBackupAt || Date.now() - S.settings.fileBackupAt > 7 * 864e5);
+async function weeklySnapshot(body) {
+  const name = 'forma-backup-' + TODAY_ISO + '.json';
+  const fd = new FormData(); fd.append('metadata', new Blob([JSON.stringify({name, parents: ['appDataFolder']})], {type: 'application/json'})); fd.append('file', new Blob([body], {type: 'application/json'}));
+  await gFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {method: 'POST', body: fd});
+  S.google.weeklyAt = Date.now();
+  try { const all = await listBackups(); for (const f of all.slice(8)) await gFetch('https://www.googleapis.com/drive/v3/files/' + f.id, {method: 'DELETE'}); } catch (e) {}
+}
+async function listBackups() {
+  const q = encodeURIComponent("name contains 'forma-backup-'");
+  const j = await (await gFetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&orderBy=createdTime desc&fields=files(id,name,createdTime,size)&pageSize=50`)).json();
+  return j.files || [];
+}
+async function backupsSheet() {
+  if (!gValid()) { gSignIn(); return; }
+  openSheet(sheetTop('Еженедельные копии') + '<p class="small muted">Загружаю список…</p>');
+  try {
+    const all = await listBackups();
+    openSheet(sheetTop('Еженедельные копии') + `<p class="small muted">forma. сама сохраняет копию раз в неделю и хранит 8 последних. Восстановление заменит данные на этом телефоне.</p>
+      <div class="list">${all.map(f => { const d = iso(new Date(f.createdTime)); return `<div class="item" style="grid-template-columns:1fr auto"><div><div class="t">${fdate(d)}</div><div class="s">${Math.max(1, Math.round((+f.size || 0) / 1024))} КБ</div></div><button class="btn line sm" data-act="restorecopy" data-id="${f.id}">Восстановить</button></div>`; }).join('') || '<p class="item" style="display:block">Копий пока нет — первая появится после синхронизации.</p>'}</div>`);
+  } catch (e) { openSheet(sheetTop('Еженедельные копии') + '<p class="small">Не получилось загрузить список. Потяни главный экран вниз и попробуй снова.</p>'); }
+}
+async function restoreCopy(id, btn) {
+  if (btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; btn.textContent = 'Да, заменить'; btn.classList.add('day'); return; }
+  try { const j = await (await gFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json(); if (!Array.isArray(j.logs)) throw 0;
+    const g = S.google; S = j; S.google = g; S.onboarded = true; S.updatedAt = Date.now(); saveLocal(); closeSheet(); render(); toast('Копия восстановлена: ' + S.logs.length + ' тренировок');
+    driveSync(false);
+  } catch (e) { toast('Не получилось восстановить копию'); }
+}
+function backupReminder() {
+  if (fileBackupDue()) return `<section class="card"><div class="row between"><h2>Резервная копия</h2><span class="tag warn">раз в неделю</span></div>
+    <p class="small muted">Прошла неделя — сохрани копию тренировок. С входом через Google это будет происходить само.</p>
+    <div class="row wrap"><button class="btn google sm" data-act="glogin">${GOOGLE_G} Войти через Google</button><button class="btn line sm" data-act="export">Сохранить файл</button></div></section>`;
+  if (S.google && !gValid() && weeklyDue()) return `<section class="card"><div class="row between"><h2>Еженедельная копия</h2><span class="tag warn">пора</span></div>
+    <p class="small muted">Нажми, чтобы сохранить копию недели в Google Диск. Google просит подтверждать доступ раз в час, поэтому нужно одно нажатие.</p>
+    <button class="btn sm" data-act="gsync">Сохранить копию</button></section>`;
+  return '';
+}
 function googleCard() {
   if (S.google) {
     const ls = S.google.lastSync ? new Date(S.google.lastSync) : null;
     return `<section class="card"><div class="acct">${S.google.picture ? `<img src="${esc(S.google.picture)}" alt="" referrerpolicy="no-referrer">` : ''}<div style="min-width:0"><h3>${esc(S.google.name || 'Google')}</h3><p class="small muted">${esc(S.google.email || '')}</p></div></div>
       <p class="small muted">Копия хранится в скрытой папке forma. на твоём Google Диске. ${ls ? 'Последнее сохранение: ' + fdate(iso(ls)) + ', ' + String(ls.getHours()).padStart(2, '0') + ':' + String(ls.getMinutes()).padStart(2, '0') + '.' : ''}</p>
-      <div class="row wrap"><button class="btn sm" data-act="gsync">Синхронизировать сейчас</button><button class="btn ghost sm" data-act="glogout">Выйти</button></div></section>`;
+      <p class="small muted">Еженедельная копия: ${S.google.weeklyAt ? fdate(iso(new Date(S.google.weeklyAt))) : 'ещё не было'} · хранятся 8 последних.</p>
+      <div class="row wrap"><button class="btn sm" data-act="gsync">Синхронизировать сейчас</button><button class="btn line sm" data-act="backups">Копии по неделям</button><button class="btn ghost sm" data-act="glogout">Выйти</button></div></section>`;
   }
   return `<section class="card"><h3>Вход через Google</h3><p class="small muted">Тренировки, веса и замеры будут сохраняться в скрытую папку forma. на твоём Google Диске. Новый телефон — вошла, и всё на месте.</p>
     <button class="btn google block" data-act="glogin">${GOOGLE_G} Войти через Google</button></section>`;
@@ -1021,6 +1064,8 @@ document.addEventListener('click', e => {
   else if (a === 'skipwelcome') { S.onboarded = true; saveLocal(); closeSheet(); render(); }
   else if (a === 'gsync') { if (gValid()) driveSync(true); else gSignIn(); }
   else if (a === 'glogout') gSignOut();
+  else if (a === 'backups') backupsSheet();
+  else if (a === 'restorecopy') restoreCopy(b.dataset.id, b);
 });
 document.addEventListener('input', e => {
   const t = e.target;
@@ -1053,6 +1098,7 @@ const RETURNING_FROM_GOOGLE = location.hash.includes('access_token=') || locatio
 render();
 initPhotos().then(() => { if (Object.keys(PHOTOS).length) render(); });
 if (RETURNING_FROM_GOOGLE) gHandleRedirect(); else if (!S.onboarded) onboarding();
+if (!RETURNING_FROM_GOOGLE && gValid()) setTimeout(() => driveSync(false), 1500);
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   const hadCtrl = !!navigator.serviceWorker.controller; let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadCtrl && !reloaded && !SES) { reloaded = true; location.reload(); } });
