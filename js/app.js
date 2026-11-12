@@ -93,7 +93,7 @@ function getItem(id) {
   return null;
 }
 function e1rm(w, r) { if (!w || !r) return 0; return r <= 10 ? (w * (1 + r / 30) + w * 36 / (37 - r)) / 2 : w * (1 + r / 30); }
-function history(exId) {
+function exHistory(exId) {
   const out = [];
   S.logs.forEach(l => { const s = l.sets[exId]; if (s && s.length) out.push({date: l.date, day: l.day, sets: s}); });
   return out.sort((a, b) => a.date < b.date ? -1 : 1);
@@ -105,7 +105,7 @@ function unitOf(ex) { return ex.kind === 'a' ? 'кг помощи' : ex.kind ===
 function suggest(exId, dayKey) {
   const ex = EX[exId]; const row = PLAN[dayKey]?.main.find(m => m[0] === exId);
   const lo = row ? row[2] : 8, hi = row ? row[3] : 12;
-  let h = history(exId).filter(x => x.day === dayKey); if (!h.length) h = history(exId);
+  let h = exHistory(exId).filter(x => x.day === dayKey); if (!h.length) h = exHistory(exId);
   if (!h.length) return {w: null, target: lo + '–' + hi, dir: 'new', why: 'Первый раз: подбери вес, чтобы последние 2 повтора давались тяжело, но чисто.'};
   const last = h[h.length - 1].sets; const w = last[0].w;
   if (ex.kind === 'bw' || ex.kind === 'band' || ex.kind === 't') {
@@ -396,7 +396,7 @@ function vLib() {
   const items = libItems().filter(x => (LIBCAT === 'all' || x.cat === LIBCAT) && (!q || getItem(x.id).name.toLowerCase().includes(q)));
   const rows = items.map(x => {
     const it = getItem(x.id);
-    if (it.type === 'gym') { const h = history(x.id); const last = h.length ? topSet(h[h.length - 1].sets) : null;
+    if (it.type === 'gym') { const h = exHistory(x.id); const last = h.length ? topSet(h[h.length - 1].sets) : null;
       return itemRow(x.id, last && (it.kind === 'w' || it.kind === 'a') ? `<b>${fmtKg(last.w)}</b><small>${unitOf(it)}</small>` : `<small>${esc(it.equip)}</small>`, it.p.map(m => MUSCLES[m]).join(', ')); }
     if (it.type === 'pdf') return itemRow(x.id, `<span class="tag hot">${esc(it.tag || 'гид')}</span>`, esc(it.sectionTitle));
     return itemRow(x.id, `<small>${esc(it.dose)}</small>`, 'Разминка');
@@ -412,7 +412,7 @@ function vLib() {
 // ---------- Журнал ----------
 function recordsList() {
   const ids = []; Object.values(PLAN).forEach(p => p.main.forEach(m => { if (!ids.includes(m[0])) ids.push(m[0]); }));
-  const rows = ids.map(id => { const ex = EX[id]; const h = history(id); if (!h.length) return '';
+  const rows = ids.map(id => { const ex = EX[id]; const h = exHistory(id); if (!h.length) return '';
     let best = null, bestDate = '', bestE = 0;
     h.forEach(x => x.sets.forEach(s => { const better = ex.kind === 'a' ? (!best || s.w < best.w || (s.w === best.w && s.r > best.r)) : ex.kind === 'w' ? (!best || s.w > best.w || (s.w === best.w && s.r > best.r)) : (!best || s.r > best.r);
       if (better) { best = s; bestDate = x.date; } bestE = Math.max(bestE, e1rm(s.w, s.r)); }));
@@ -447,7 +447,7 @@ function vJournal() {
     const key = ['hip_thrust','leg_press','rdl','lat_pulldown'];
     body = key.map(id => {
       const dk = Object.keys(PLAN).find(k => PLAN[k].main.some(m => m[0] === id));
-      const h = history(id).filter(x => x.day === dk); if (h.length < 2) return '';
+      const h = exHistory(id).filter(x => x.day === dk); if (h.length < 2) return '';
       const pts = h.map(x => ({x: x.date, y: r1(e1rm(topSet(x.sets).w, topSet(x.sets).r))}));
       const proj = forecast(pts, EX[id]);
       const gain = Math.round((pts[pts.length - 1].y / pts[0].y - 1) * 100);
@@ -478,7 +478,7 @@ function forecast(pts, ex) {
 // ---------- Расчёты ----------
 const CALC_EX = ['hip_thrust','leg_press','rdl','lat_pulldown','chest_press','seated_row','leg_curl','hip_abduction','cable_kickback','machine_crunch'];
 function exOptions(sel) { return CALC_EX.map(id => `<option value="${id}" ${id === sel ? 'selected' : ''}>${EX[id].name}</option>`).join(''); }
-function lastTop(id) { const h = history(id); return h.length ? topSet(h[h.length - 1].sets) : {w: START[id] || 20, r: 10}; }
+function lastTop(id) { const h = exHistory(id); return h.length ? topSet(h[h.length - 1].sets) : {w: START[id] || 20, r: 10}; }
 function vCalc() {
   const P = S.profile, w = curWeight(), ht = lastTop('hip_thrust');
   const avgProt = avgYazio('protein'), avgKcal = avgYazio('eatKcal');
@@ -595,7 +595,7 @@ function exSheet(id) {
   } else {
     const days = Object.entries(PLAN).flatMap(([k, p]) => p.main.filter(m => m[0] === id).map(m => `${p.day.slice(0, 2)} ${k}: ${m[1]} × ${m[2]}–${m[3]}`));
     const sgK = Object.keys(PLAN).find(k => PLAN[k].main.some(m => m[0] === id));
-    const sg = sgK ? suggest(id, sgK) : null; const h = history(id).filter(x => !sgK || x.day === sgK);
+    const sg = sgK ? suggest(id, sgK) : null; const h = exHistory(id).filter(x => !sgK || x.day === sgK);
     html += `<div class="row wrap"><span class="tag">${esc(it.equip)}</span>${days.map(d => `<span class="tag hot">${d}</span>`).join('')}${it.perSide ? '<span class="tag">на каждую сторону</span>' : ''}</div>
       <div class="mapwrap">${bodyMap(it.p, it.s)}<div class="legend"><b class="small">Какие мышцы работают</b>${it.p.map(m => `<span><i class="k" style="background:var(--hot)"></i>${MUSCLES[m]}</span>`).join('')}${it.s.map(m => `<span class="muted"><i class="k" style="background:var(--warm)"></i>${MUSCLES[m]}</span>`).join('')}</div></div>
       ${sg ? `<section class="note"><b>В следующий раз:</b> ${sg.w != null && (it.kind === 'w' || it.kind === 'a') ? fmtKg(sg.w) + ' ' + unitOf(it) + ' × ' + sg.target + '. ' : ''}${sg.why}</section>` : ''}
@@ -893,7 +893,28 @@ const GCLIENT = '771904817776-r7nllp6ci2vu27f5tjv32oh9troq93a3.apps.googleuserco
 const GSCOPE = 'https://www.googleapis.com/auth/drive.appdata openid email profile';
 let GTOK = null, GEXP = 0, GTC = null, SYNC_T = null, SYNCING = false, GTHEN = null;
 const gValid = () => !!GTOK && Date.now() < GEXP;
+const STANDALONE = (navigator.standalone === true) || matchMedia('(display-mode: standalone)').matches;
+function gSignInRedirect() {
+  const st = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try { localStorage.setItem('forma.oauth', st); } catch (e) {}
+  const p = new URLSearchParams({client_id: GCLIENT, redirect_uri: location.origin + '/', response_type: 'token', scope: GSCOPE, include_granted_scopes: 'true', state: st, prompt: S.google ? 'select_account' : 'consent'});
+  if (S.google?.email) p.set('login_hint', S.google.email);
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + p.toString();
+}
+async function gHandleRedirect() {
+  if (!location.hash.includes('access_token=') && !location.hash.includes('error=')) return false;
+  const h = new URLSearchParams(location.hash.slice(1)); history.replaceState(null, '', location.pathname);
+  let st = null; try { st = localStorage.getItem('forma.oauth'); localStorage.removeItem('forma.oauth'); } catch (e) {}
+  if (h.get('error') || !h.get('access_token') || (st && h.get('state') !== st)) { toast('Вход через Google не завершён. Попробуй ещё раз.'); return true; }
+  GTOK = h.get('access_token'); GEXP = Date.now() + (Number(h.get('expires_in') || 3600) - 60) * 1000;
+  try { localStorage.setItem('forma.gtok', JSON.stringify([GTOK, GEXP])); } catch (e) {}
+  try { await gProfile(); } catch (e) {}
+  S.onboarded = true; saveLocal(); closeSheet();
+  await driveSync(true); render();
+  return true;
+}
 function gSignIn(then) {
+  if (STANDALONE) { gSignInRedirect(); return; }
   if (!(window.google && google.accounts && google.accounts.oauth2)) { toast('Google ещё загружается — попробуй через пару секунд'); return; }
   GTHEN = then || null;
   if (!GTC) GTC = google.accounts.oauth2.initTokenClient({client_id: GCLIENT, scope: GSCOPE,
@@ -1028,8 +1049,34 @@ if (location.hash.startsWith('#sync=')) {
   try { const b = location.hash.slice(6).replace(/-/g, '+').replace(/_/g, '/'); const txt = decodeURIComponent(escape(atob(b))); setTimeout(() => toast(mergeSync(txt)), 300); } catch (e) {}
   history.replaceState(null, '', location.pathname);
 }
+const RETURNING_FROM_GOOGLE = location.hash.includes('access_token=') || location.hash.includes('error=');
 render();
 initPhotos().then(() => { if (Object.keys(PHOTOS).length) render(); });
-if (!S.onboarded) onboarding();
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if (RETURNING_FROM_GOOGLE) gHandleRedirect(); else if (!S.onboarded) onboarding();
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  const hadCtrl = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadCtrl && !reloaded && !SES) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {});
+}
+
+// ---------- потянуть вниз, чтобы обновить ----------
+async function refreshAll() {
+  try { const r = await navigator.serviceWorker?.getRegistration(); await r?.update(); } catch (e) {}
+  if (gValid()) await driveSync(false);
+  await initPhotos(); render();
+  toast(S.google && !gValid() ? 'Обновлено. Для Google Диска нажми «Сохранить в Google»' : 'Обновлено');
+}
+(function pullToRefresh() {
+  const ind = document.createElement('div'); ind.id = 'ptr'; ind.setAttribute('aria-hidden', 'true');
+  ind.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 5v12M6 11l6 6 6-6"/></svg>'; document.body.appendChild(ind);
+  let y0 = null, busy = false;
+  const reset = () => { ind.style.transform = ''; ind.style.opacity = '0'; ind.classList.remove('ready'); };
+  addEventListener('touchstart', e => { y0 = (!busy && !$('#sheet') && scrollY <= 0) ? e.touches[0].clientY : null; }, {passive: true});
+  addEventListener('touchmove', e => { if (y0 == null) return; const dy = e.touches[0].clientY - y0; if (dy <= 0 || scrollY > 0) { reset(); return; }
+    const d = Math.min(120, dy * 0.5); ind.style.transform = `translate(-50%, ${d}px) rotate(${Math.min(180, d * 2.8)}deg)`; ind.style.opacity = String(Math.min(1, d / 50)); ind.classList.toggle('ready', d >= 64); }, {passive: true});
+  addEventListener('touchend', () => { if (y0 == null) return; y0 = null;
+    if (!ind.classList.contains('ready')) { reset(); return; }
+    busy = true; ind.classList.add('spin'); ind.style.transform = 'translate(-50%, 64px)';
+    refreshAll().finally(() => { busy = false; ind.classList.remove('spin'); reset(); }); });
+})();
 
