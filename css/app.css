@@ -278,3 +278,12 @@ h1,h2,.serif,.logo,.stat b,.ring .c b,.result .big,.prrow b,.timer b,.item .r b,
 .welcome-list b{font-family:var(--f-display);font-style:italic;font-size:22px;color:var(--accent);font-weight:600;font-variant-numeric:lining-nums}
 .welcome-actions{display:flex;flex-direction:column;gap:10px}
 .btn-link{border:0;background:transparent;color:var(--accent);font-weight:600;font-size:14px;padding:8px}
+/* pull to refresh */
+html,body{overscroll-behavior-y:none}
+#ptr{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) - 30px);z-index:35;width:38px;height:38px;border-radius:50%;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);display:grid;place-items:center;opacity:0;transform:translate(-50%,0);transition:opacity .15s;pointer-events:none}
+#ptr svg{width:18px;height:18px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#ptr.ready svg{stroke:var(--accent)}
+#ptr.spin{transition:transform .2s}
+#ptr.spin svg{display:none}
+#ptr.spin::after{content:"";width:18px;height:18px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
