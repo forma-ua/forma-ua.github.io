@@ -268,3 +268,13 @@ label.btn{cursor:pointer}
 h1,h2,.serif,.logo,.stat b,.ring .c b,.result .big,.prrow b,.timer b,.item .r b,.daytab b,.wd b{font-variant-numeric:lining-nums tabular-nums}
 .sheet>*{flex-shrink:0}
 .sheet-top h2 em{font-style:italic;color:var(--day,var(--accent))}
+/* welcome */
+.sheet.welcome{background:radial-gradient(90% 60% at 100% 0%,var(--dA-soft) 0%,transparent 60%),radial-gradient(80% 50% at 0% 100%,var(--dC-soft) 0%,transparent 60%),var(--bg);justify-content:center}
+.welcome-in{display:flex;flex-direction:column;gap:28px;width:100%;max-width:420px;margin:auto;padding-block:24px}
+.welcome-logo{font-size:76px}
+.welcome-lead{font-family:var(--f-display);font-size:28px;line-height:1.15;margin-top:6px;max-width:16ch}
+.welcome-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.welcome-list li{display:grid;grid-template-columns:70px 1fr;gap:12px;align-items:baseline;font-size:14px;color:var(--muted)}
+.welcome-list b{font-family:var(--f-display);font-style:italic;font-size:22px;color:var(--accent);font-weight:600;font-variant-numeric:lining-nums}
+.welcome-actions{display:flex;flex-direction:column;gap:10px}
+.btn-link{border:0;background:transparent;color:var(--accent);font-weight:600;font-size:14px;padding:8px}
