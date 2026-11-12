@@ -341,3 +341,24 @@ table.fc .up{color:var(--good)}
 .fcg .hl{background:var(--good-soft)}.fcg .hl b{color:var(--good)}
 .fcmore summary{cursor:pointer;padding:10px 0;font-weight:600;color:var(--accent);list-style:none}
 .fcmore summary::-webkit-details-marker{display:none}
+/* сворачиваемые блоки */
+details.fold>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto 18px;align-items:center;gap:10px;-webkit-tap-highlight-color:transparent}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary .ft h2{margin:0}
+details.fold>summary .fm{font-size:12.5px;color:var(--muted);text-align:right;max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+details.fold>summary .chev{width:18px;height:18px;border-radius:50%;position:relative}
+details.fold>summary .chev::before{content:"";position:absolute;left:5px;top:4px;width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .2s}
+details.fold[open]>summary .chev::before{transform:rotate(225deg);top:7px}
+details.fold>.fb{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+details.card.fold:not([open]){padding-top:14px;padding-bottom:14px}
+details.lfold{padding:4px 2px}
+details.lfold>summary{padding:8px 2px}
+details.lfold>.fb{margin-top:4px}
+.chartb{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid var(--line)}
+.chartb:first-of-type{border-top:0}
+#totop{position:fixed;right:16px;bottom:calc(88px + env(safe-area-inset-bottom));width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:18px;box-shadow:0 6px 20px rgba(0,0,0,.12);opacity:0;pointer-events:none;transform:translateY(8px);transition:.2s;z-index:30}
+#totop.on{opacity:1;pointer-events:auto;transform:none}
+@media (min-width:900px){#totop{bottom:24px}}
+details.fold>summary h2{font-size:22px;line-height:1.15}
+details.fold>summary h2 em{font-style:italic;color:var(--day,var(--accent));margin-right:8px}
+details.fold>summary .fm{max-width:42vw}
