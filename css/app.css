@@ -287,3 +287,39 @@ html,body{overscroll-behavior-y:none}
 #ptr.spin svg{display:none}
 #ptr.spin::after{content:"";width:18px;height:18px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* layout fix: grid tracks must not grow past the screen */
+.shell{grid-template-columns:minmax(0,1fr)}
+@media (min-width:1080px){.shell{grid-template-columns:minmax(300px,360px) minmax(0,480px)}}
+.app,.screen,.card,.list,.item>div,.sheet{min-width:0}
+.item .t,.item .s{overflow-wrap:anywhere}
+.chips{max-width:100%}
+button.wd{border:0;font:inherit;cursor:pointer}
+
+/* рабочие веса */
+.wlist{gap:0;padding-block:6px}
+.wrow{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.wrow:first-child{border-top:0}
+.wname{display:flex;flex-direction:column;gap:1px;min-width:0}
+.wname b{font-weight:600;font-size:14.5px}
+.wctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.wctl .wval{width:86px;text-align:center;font-weight:600;font-size:17px;padding:9px 6px}
+.wctl[data-off] .wval,.wctl[data-off] .stepb,.wctl[data-off] .wunit{opacity:.35}
+.wunit{font-size:12.5px;color:var(--muted);min-width:22px}
+.stepb{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:20px;line-height:1;color:var(--ink);display:grid;place-items:center}
+.bwchip{margin-left:auto}
+.bwchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.wtoggle{display:grid;grid-template-columns:1fr 1fr;background:var(--sunk);border-radius:999px;padding:3px;gap:3px}
+.wtoggle button{border:0;background:transparent;border-radius:999px;padding:7px 8px;font-size:12.5px;color:var(--muted);font-weight:500}
+.wtoggle button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.inp.nobw{display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--muted);background:var(--sunk);border-style:dashed}
+
+/* календарь */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.cal .cw{font-size:10.5px;color:var(--muted);text-align:center;letter-spacing:.06em;text-transform:uppercase;padding-bottom:2px}
+.cd{aspect-ratio:1;border:0;border-radius:12px;background:var(--sunk);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-size:12px;color:var(--muted);padding:0;min-width:0}
+.cd span{font-variant-numeric:tabular-nums}
+.cd b,.cd i{font-family:var(--f-display);font-style:italic;font-weight:600;font-size:15px;line-height:1}
+.cd.plan{background:var(--day-soft)} .cd.plan i{color:var(--day)}
+.cd.miss{background:transparent;border:1.5px dashed var(--line)} .cd.miss i{color:var(--faint)}
+.cd.done{background:var(--day);color:var(--accent-ink)} .cd.done b{color:var(--accent-ink)}
+.cd.today{outline:1.5px solid var(--ink);outline-offset:1px}
