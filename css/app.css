@@ -362,3 +362,6 @@ details.lfold>.fb{margin-top:4px}
 details.fold>summary h2{font-size:22px;line-height:1.15}
 details.fold>summary h2 em{font-style:italic;color:var(--day,var(--accent));margin-right:8px}
 details.fold>summary .fm{max-width:42vw}
+/* без пустого места внизу страниц */
+html,body{height:auto;min-height:100%}
+.shell{overflow:clip}
