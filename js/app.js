@@ -249,6 +249,7 @@ function render() {
     <main id="screen">${({today: vToday, plan: vPlan, lib: vLib, journal: vJournal, calc: vCalc})[TAB]()}</main>`;
   $('#nav').innerHTML = `<div class="nav-in">${TABS.map(([k, l]) => `<button data-tab="${k}" ${TAB === k ? 'aria-current="page"' : ''}>${ICONS[k]}<span>${l}</span></button>`).join('')}</div>`;
   if (TAB === 'calc') calcAll();
+  if (!document.getElementById('totop')) { document.body.insertAdjacentHTML('beforeend', '<button id="totop" data-act="top" aria-label="Наверх">↑</button>'); addEventListener('scroll', () => document.getElementById('totop').classList.toggle('on', scrollY > 900), {passive: true}); }
 }
 
 // ---------- кольца, восстановление, рекорды ----------
@@ -281,9 +282,10 @@ function recoveryCard() {
   const grp = (lo, hi) => g.filter(x => x[1] >= lo && x[1] < hi);
   const tired = grp(0, 50), mid = grp(50, 85), ready = grp(85, 101);
   const li = (t, arr) => arr.length ? `<div><b>${t}</b>${arr.map(x => x[0] + (x[1] < 100 ? ` <span class="muted num">${x[1]}%</span>` : '')).join(', ')}</div>` : '';
-  return `<section class="card" aria-label="Восстановление мышц"><div class="row between"><h2>Восстановление</h2><span class="src">по твоим тренировкам</span></div>
+  const meta = tired.length ? 'отдыхают: ' + tired.slice(0, 2).map(x => x[0].toLowerCase()).join(', ') + (tired.length > 2 ? '…' : '') : mid.length ? 'почти всё готово' : 'все мышцы готовы';
+  return fold('recov', '<h2>Восстановление</h2>', meta, `
     <div class="recov">${bodyMap([], [], cmap)}<div class="rlist">${tired.length || mid.length ? li('Отдыхают', tired) + li('Почти готовы', mid) + li('Готовы', ready) : '<div><b>Всё готово</b>Мышцы восстановились — можно работать в полную силу.</div>'}</div></div>
-    <div class="legend3"><span><i style="background:var(--hot)"></i>нагружены</span><span><i style="background:var(--warm)"></i>восстанавливаются</span><span><i style="background:var(--fresh)"></i>готовы</span></div></section>`;
+    <div class="legend3"><span><i style="background:var(--hot)"></i>нагружены</span><span><i style="background:var(--warm)"></i>восстанавливаются</span><span><i style="background:var(--fresh)"></i>готовы</span></div>`);
 }
 function bestBefore(id, end) {
   let w = 0, e = 0, a = Infinity, r = 0, had = false;
@@ -361,16 +363,14 @@ function vToday() {
       <div class="stat"><span>Вес тела</span><b>${fmtKg(curWeight())}</b><span>кг</span></div>
       <div class="stat"><span>Б · Ж · У</span><b>${hd.protein ?? '—'}·${hd.fat ?? '—'}·${hd.carbs ?? '—'}</b><span>г</span></div>
     </section>
-    ${month.length ? `<section class="card"><div class="row between"><h2>Рекорды за месяц</h2><span class="tag pr">${month.length} PR</span></div>
+    ${month.length ? fold('prm', '<h2>Рекорды за месяц</h2>', `<span class="tag pr">${month.length} PR</span>`, `
       <div class="prs">${month.slice(-3).reverse().map(p => `<div class="prrow"><span class="small">${esc(EX[p.id].name)}<br><span class="muted">${fdate(p.date)} · ${p.label}</span></span><b>${p.text}</b></div>`).join('')}</div>
-      <button class="btn line sm" data-act="gotorec">Все рекорды</button></section>` : ''}
+      <button class="btn line sm" data-act="gotorec">Все рекорды</button>`) : ''}
     ${lastLog ? `<section class="card d${lastLog.day}"><div class="row between"><h2>Последняя тренировка</h2><span class="tag day">${lastLog.day}</span></div>
       <div class="grid3"><div class="stat"><span>${fdate(lastLog.date)}</span><b>${Math.round((lastLog.end - lastLog.start) / 60000)}</b><span>мин</span></div>
       <div class="stat"><span>Подходов</span><b>${nSets(lastLog.sets)}</b><span>рабочих</span></div>
       <div class="stat"><span>${esc(lastLog.src || 'оценка')}</span><b>${lastLog.kcal}</b><span>ккал</span></div></div>
       <button class="btn line sm" data-act="log" data-id="${lastLog.id}">Подробнее</button></section>` : ''}
-    <section class="card flat"><h2>Твои цели</h2>
-      ${GOALS.map(([g, h]) => `<div><b style="font-size:14px;font-weight:600">${g}</b><p class="small muted">${h}</p></div>`).join('')}</section>
   </div>`;
 }
 
@@ -396,18 +396,15 @@ function vPlan() {
       <div class="note"><b>Акцент дня.</b> ${p.accent}</div>
       <button class="btn day block" data-act="start" data-k="${k}">Начать тренировку ${k}</button>
     </section>
-    <div class="block-h"><h2><em>1</em>Разминка</h2><span class="small muted">≈ 15 мин</span></div>
-    <div class="list">${WARM.map(w => itemRow(w.id, `<b>${w.dose}</b>`, '')).join('')}</div>
-    <div class="block-h"><h2><em>2</em>Активация</h2><span class="small muted">≈ 4 мин</span></div>
-    <div class="list">${p.act.map(a => itemRow(a.ex, `<b>${a.sets} × </b><small>${a.reps}</small>`, MUSCLES[EX[a.ex].p[0]])).join('')}</div>
-    <div class="block-h"><h2><em>3</em>Основная часть</h2><span class="small muted">справа — вес на следующий раз</span></div>
-    <div class="list">${main}</div>
-    <div class="block-h"><h2><em>4</em>Мобильность таза</h2><span class="small muted">≈ 8 мин</span></div>
-    <div class="list">${p.mob.map(id => itemRow(id, `<small>${esc(PDFMAP[id].reps || '')}</small>`, esc(PDFMAP[id].sectionTitle))).join('')}</div>
-    <section class="card"><h2>Как прогрессировать</h2><ul class="clean">${p.progress.map(x => `<li>${x}</li>`).join('')}</ul>
-      <p class="small muted">Общее правило: работай с запасом 1–2 повтора. Каждые 6–8 недель — лёгкая неделя: те же веса, вдвое меньше подходов.</p></section>
-    <section class="card"><h2>На что рассчитывать</h2><ul class="clean">${p.forecast.map(x => `<li>${x}</li>`).join('')}</ul>
-      <button class="btn line sm" data-act="gotoprog">Прогноз по моим весам</button></section>
+    ${fold('pw', '<h2><em>1</em>Разминка</h2>', '≈ 15 мин · ' + WARM.length + ' упр.', `<div class="list">${WARM.map(w => itemRow(w.id, `<b>${w.dose}</b>`, '')).join('')}</div>`, false, 'lfold')}
+    ${fold('pa', '<h2><em>2</em>Активация</h2>', '≈ 4 мин · ' + p.act.length + ' упр.', `<div class="list">${p.act.map(a => itemRow(a.ex, `<b>${a.sets} × </b><small>${a.reps}</small>`, MUSCLES[EX[a.ex].p[0]])).join('')}</div>`, false, 'lfold')}
+    ${fold('pm', '<h2><em>3</em>Основная часть</h2>', p.main.length + ' упр. · справа вес', `<div class="list">${main}</div>`, true, 'lfold')}
+    ${fold('pb', '<h2><em>4</em>Мобильность таза</h2>', '≈ 8 мин · ' + p.mob.length + ' упр.', `<div class="list">${p.mob.map(id => itemRow(id, `<small>${esc(PDFMAP[id].reps || '')}</small>`, esc(PDFMAP[id].sectionTitle))).join('')}</div>`, false, 'lfold')}
+    ${fold('pp', '<h2>Как прогрессировать</h2>', 'правила прибавки', `<ul class="clean">${p.progress.map(x => `<li>${x}</li>`).join('')}</ul>
+      <p class="small muted">Общее правило: работай с запасом 1–2 повтора. Каждые 6–8 недель — лёгкая неделя: те же веса, вдвое меньше подходов.</p>`)}
+    ${fold('pf', '<h2>На что рассчитывать</h2>', 'и прогноз весов', `<ul class="clean">${p.forecast.map(x => `<li>${x}</li>`).join('')}</ul>
+      <button class="btn line sm" data-act="gotoprog">Прогноз по моим весам</button>`)}
+    ${fold('pg', '<h2>Твои цели</h2>', GOALS.length + ' цели', GOALS.map(([g, h]) => `<div><b style="font-size:14px;font-weight:600">${g}</b><p class="small muted">${h}</p></div>`).join(''))}
     ${k === 'C' ? '<p class="small muted">«Разведение ног в тренажёре» и «Разведение бёдер в тренажёре сидя» — один и тот же тренажёр, поэтому история весов у них общая.</p>' : ''}
   </div>`;
 }
@@ -432,7 +429,7 @@ function vLib() {
   const match = x => !q || getItem(x.id).name.toLowerCase().includes(q);
   let body = '';
   if (LIBCAT === 'all') {
-    body = CATS.slice(1).map(([c, l]) => { const g = all.filter(x => x.cats[0] === c && match(x)).sort(libSort); return g.length ? `<div class="block-h"><h2>${l}</h2><span class="small muted">${g.length}</span></div><div class="list">${g.map(libRow).join('')}</div>` : ''; }).join('');
+    body = CATS.slice(1).map(([c, l]) => { const g = all.filter(x => x.cats[0] === c && match(x)).sort(libSort); return g.length ? fold('lib-' + c, `<h2>${l}</h2>`, g.length + ' упр.', `<div class="list">${g.map(libRow).join('')}</div>`, false, 'lfold', q ? true : undefined) : ''; }).join('');
   } else {
     const g = all.filter(x => x.cats.includes(LIBCAT) && match(x)).sort(libSort);
     body = g.length ? `<div class="list">${g.map(libRow).join('')}</div>` : '';
@@ -484,25 +481,33 @@ function vJournal() {
   } else {
     body = volumeCard() + weightForecastCard() + bodyForecastCard();
     const key = ['hip_thrust','leg_press','rdl','lat_pulldown'];
-    body += key.map(id => {
+    const charts = key.map(id => {
       const dk = Object.keys(PLAN).find(k => PLAN[k].main.some(m => m[0] === id));
       const h = exHistory(id).filter(x => x.day === dk && !x.sets.every(z => !z.w)); if (h.length < 2) return '';
       const pts = h.map(x => ({x: x.date, y: r1(e1rm(topSet(x.sets).w, topSet(x.sets).r))}));
       const proj = forecast(pts, EX[id]);
       const gain = Math.round((pts[pts.length - 1].y / pts[0].y - 1) * 100);
-      return `<section class="card"><div class="row between"><h3>${EX[id].name}</h3><span class="tag good">${gain >= 0 ? '+' : ''}${gain}%</span></div>
-        <p class="small muted">Сила по твоим тренировкам: расчётный максимум на 1 раз, кг. Пунктир — куда ведёт нынешний темп.</p>
-        ${lineChart(pts, {proj, label: EX[id].name})}</section>`;
-    }).join('') + `<section class="card"><h2>Чего ждать по срокам</h2>
+      return `<div class="chartb"><div class="row between"><h3>${EX[id].name}</h3><span class="tag good">${gain >= 0 ? '+' : ''}${gain}%</span></div>
+        ${lineChart(pts, {proj, label: EX[id].name})}</div>`;
+    }).filter(Boolean);
+    body += (charts.length ? fold('chr', '<h2>Графики силы</h2>', charts.length + ' ' + plural(charts.length, 'упражнение', 'упражнения', 'упражнений'), '<p class="small muted">Расчётный максимум на 1 раз, кг. Пунктир — куда ведёт нынешний темп.</p>' + charts.join('')) : '') + fold('when', '<h2>Чего ждать по срокам</h2>', 'от 2 недель до полугода', `
       <div class="tbl-wrap"><table class="tbl"><tbody>
       <tr><td><b>2–4 недели</b></td><td>Веса растут почти каждую тренировку — это техника и нервная система. Объёмы пока не меняются.</td></tr>
       <tr><td><b>6–8 недель</b></td><td>Первые видимые изменения ягодиц сверху и сбоку, поясница меньше устаёт, легче держать осанку.</td></tr>
       <tr><td><b>3 месяца</b></td><td>Около +1–1,5 кг мышц при белке от 1,6 г/кг (оценка для начинающих девушек). Ягодицы заметно круглее.</td></tr>
       <tr><td><b>6 месяцев</b></td><td>Темп замедляется до 0,2–0,3 кг мышц в месяц. Дальше нужны рост весов и разгрузочные недели.</td></tr>
-      </tbody></table></div></section>`;
+      </tbody></table></div>`);
   }
   return `<div class="screen"><div class="screen-h"><span class="eyebrow">Веса, замеры, история</span><h1>Журнал</h1></div>${seg}${body}</div>`;
 }
+// ---------- сворачиваемые блоки ----------
+const FOLDS = (() => { try { return JSON.parse(localStorage.getItem('forma.folds')) || {}; } catch (e) { return {}; } })();
+function fold(id, title, meta, body, def = false, cls = 'card', force) {
+  const open = force != null ? force : (id in FOLDS ? FOLDS[id] : def);
+  return `<details class="${cls} fold" data-fold="${id}" ${open ? 'open' : ''}><summary><span class="ft">${title}</span><span class="fm">${meta || ''}</span><i class="chev" aria-hidden="true"></i></summary><div class="fb">${body}</div></details>`;
+}
+document.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.fold) { FOLDS[d.dataset.fold] = d.open; try { localStorage.setItem('forma.folds', JSON.stringify(FOLDS)); } catch (x) {} } }, true);
+
 // ---------- прогноз и объём ----------
 const VOLT = {'Ягодицы':[12,20],'Задняя поверхность бедра':[6,12],'Квадрицепс':[6,12],'Спина':[8,14],'Поясница':[3,8],'Грудь':[4,10],'Плечи':[4,10],'Руки':[4,10],'Пресс':[4,10],'Приводящие':[2,6]};
 function weeklyVolume() {
@@ -517,8 +522,9 @@ function volumeCard() {
   const rows = Object.entries(VOLT).map(([n, [lo, hi]]) => { const v = Math.round(g[n] * 2) / 2; const max = hi * 1.4; const st = v < lo ? ['мало', 'warn'] : v > hi * 1.25 ? ['много', 'warn'] : ['в норме', 'good'];
     return `<div class="vrow"><div class="row between"><span class="small"><b>${n}</b></span><span class="small"><b class="num">${String(v).replace('.', ',')}</b> <span class="muted">из ${lo}–${hi}</span> <span class="tag ${st[1]}">${st[0]}</span></span></div>
       <div class="vbar"><i class="band" style="left:${lo / max * 100}%;width:${(hi - lo) / max * 100}%"></i><i class="fill" style="width:${Math.min(100, v / max * 100)}%"></i></div></div>`; }).join('');
-  return `<section class="card"><div class="row between"><h2>Подходы за 7 дней</h2><span class="src">по мышцам</span></div>
-    <p class="small muted">Главная мера нагрузки для роста: сколько рабочих подходов получила мышца за неделю. Полоска — рекомендуемый коридор для твоих целей, на ягодицы — больше всего.</p>${rows}</section>`;
+  const gl = Math.round(g['Ягодицы'] * 2) / 2; const low = Object.entries(VOLT).filter(([n, [lo]]) => g[n] < lo).length;
+  return fold('vol', '<h2>Подходы за 7 дней</h2>', `ягодицы ${String(gl).replace('.', ',')} · ${low ? 'мало у ' + low + ' гр.' : 'всё в норме'}`, `
+    <p class="small muted">Главная мера нагрузки для роста: сколько рабочих подходов получила мышца за неделю. Полоска — рекомендуемый коридор для твоих целей, на ягодицы — больше всего.</p>${rows}`);
 }
 function forecastEx(id) {
   const e = EX[id]; const pe = planExercises().find(x => x.id === id); const f = pe ? pe.days.length : 1; const k = pe ? pe.days[0] : 'A';
@@ -540,25 +546,24 @@ function weightForecastCard() {
   const rows = ids.map(id => [id, forecastEx(id)]).filter(x => x[1]);
   if (!rows.length) return `<section class="card"><h2>Прогноз весов</h2><p class="small muted">Укажи рабочие веса — и здесь появится, с каким весом ты, скорее всего, будешь работать через 4, 8 и 12 недель.</p><button class="btn block" data-act="weights">Указать веса</button></section>`;
   const fmt = (o, v) => o.kind === 'a' && v === 0 ? 'без помощи' : fmtKg(v);
-  return `<section class="card"><div class="row between"><h2>Прогноз весов</h2><span class="src">3 трен. в неделю</span></div>
+  return fold('wfc', '<h2>Прогноз весов</h2>', 'через 4 · 8 · 12 недель', `
     <p class="small muted">Считаю по твоим весам и диапазону повторов: каждый раз +1 повтор, на верхней границе — прибавка веса, со временем темп замедляется. Когда накопится история, прогноз подстроится под твой реальный темп.</p>
     ${(() => { const key = ['hip_thrust','leg_press','rdl','lat_pulldown','hip_abduction','cable_kickback'];
       const ord = rows.slice().sort((x, y) => (key.indexOf(x[0]) + 1 || 99) - (key.indexOf(y[0]) + 1 || 99));
-      const row = ([id, o]) => `<div class="fcrow"><div class="row between"><button class="lnk" data-act="ex" data-id="${id}">${esc(EX[id].name)}</button><span class="small muted">прибавка через ~${o.next} ${plural(o.next, 'трен.', 'трен.', 'трен.')}</span></div>
+      const row = ([id, o]) => `<div class="fcrow"><div class="row between"><button class="lnk" data-act="ex" data-id="${id}">${esc(EX[id].name)}</button><span class="small muted">${o.unit} · +шаг через ~${o.next} трен.</span></div>
         <div class="fcg"><div><span>сейчас</span><b>${fmt(o, o.now)}</b></div><div><span>4 нед</span><b>${fmt(o, o.w4)}</b></div><div><span>8 нед</span><b>${fmt(o, o.w8)}</b></div><div class="hl"><span>12 нед</span><b>${fmt(o, o.w12)}</b></div></div>
-        <div class="small muted">${o.unit}</div></div>`;
-      return ord.slice(0, 6).map(row).join('') + (ord.length > 6 ? `<details class="fcmore"><summary>Ещё ${ord.length - 6} ${plural(ord.length - 6, 'упражнение', 'упражнения', 'упражнений')}</summary>${ord.slice(6).map(row).join('')}</details>` : ''); })()}
-    </section>`;
+</div>`;
+      return ord.slice(0, 4).map(row).join('') + (ord.length > 4 ? `<details class="fcmore"><summary>Ещё ${ord.length - 4} ${plural(ord.length - 4, 'упражнение', 'упражнения', 'упражнений')}</summary>${ord.slice(4).map(row).join('')}</details>` : ''); })()}`, true);
 }
 function bodyForecastCard() {
   const P = S.profile, w = curWeight(); const prot = avgYazio('protein'); const n4 = S.logs.filter(l => l.end > Date.now() - 28 * 864e5).length;
   const freq = n4 ? Math.min(4, n4 / 4) : 3; const freqF = freq >= 3 ? 1 : freq >= 2 ? 0.75 : 0.45; const protF = !prot ? 0.85 : prot / w < 1.4 ? 0.7 : prot / w < 1.6 ? 0.85 : 1;
   const goalF = P.goal === 'cut' ? 0.55 : P.goal === 'recomp' ? 0.85 : 1; const m = 0.45 * 3 * freqF * protF * goalF;
   const ms = S.body.filter(b => b.waist); const wd = ms.length >= 2 ? r1(ms[ms.length - 1].waist - ms[0].waist) : null; const hd = ms.length >= 2 ? r1(ms[ms.length - 1].hips - ms[0].hips) : null;
-  return `<section class="card"><h2>Прогноз тела на 12 недель</h2>
+  return fold('bfc', '<h2>Прогноз тела</h2>', `+${fmtKg(r1(m * .75))}…${fmtKg(r1(m * 1.25))} кг мышц`, `
     <div class="grid2"><div class="stat"><span>Мышцы</span><b>+${fmtKg(r1(m * .75))}…${fmtKg(r1(m * 1.25))}</b><span>кг · оценка</span></div>
     <div class="stat"><span>Тренировок в неделю</span><b>${String(r1(freq)).replace('.', ',')}</b><span>${n4 ? 'за последние 4 недели' : 'по плану'}</span></div></div>
-    <p class="small muted">${protF < 1 ? 'Белка в среднем меньше 1,6 г на кг — мышцы будут расти медленнее. ' : prot ? 'Белка хватает. ' : 'Подключи Yazio, чтобы учитывать белок. '}${wd != null ? `Замеры: талия ${wd > 0 ? '+' : ''}${fmtKg(wd)} см, ягодицы ${hd > 0 ? '+' : ''}${fmtKg(hd)} см с ${fdate(ms[0].date)}.` : 'Добавляй замеры раз в 2–3 недели — вес может стоять, а форма меняться.'}</p></section>`;
+    <p class="small muted">${protF < 1 ? 'Белка в среднем меньше 1,6 г на кг — мышцы будут расти медленнее. ' : prot ? 'Белка хватает. ' : 'Подключи Yazio, чтобы учитывать белок. '}${wd != null ? `Замеры: талия ${wd > 0 ? '+' : ''}${fmtKg(wd)} см, ягодицы ${hd > 0 ? '+' : ''}${fmtKg(hd)} см с ${fdate(ms[0].date)}.` : 'Добавляй замеры раз в 2–3 недели — вес может стоять, а форма меняться.'}</p>`);
 }
 function forecast(pts, ex) {
   // linear trend on last 4 weeks, weekly growth capped at 3% (beginner) and tapering
@@ -1234,7 +1239,8 @@ function googleCard() {
 // ================= events =================
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act],[data-tab]'); if (!b) return;
-  if (b.dataset.tab) { TAB = b.dataset.tab; render(); window.scrollTo(0, 0); return; }
+  if (b.dataset.tab) { if (TAB === b.dataset.tab) { window.scrollTo({top: 0, behavior: 'smooth'}); return; } TAB = b.dataset.tab; render(); window.scrollTo(0, 0); return; }
+  if (b.dataset.act === 'top') { window.scrollTo({top: 0, behavior: 'smooth'}); return; }
   const a = b.dataset.act;
   if (a === 'ex') exSheet(b.dataset.id);
   else if (a === 'close') { const wasW = !!document.querySelector('#sheet .wlist'); closeSheet(); if (wasW) render(); }
