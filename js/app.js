@@ -152,6 +152,7 @@ function keytel(hr, kg, age, sex, min) {
 }
 const metKcal = (met, kg, min) => met * 3.5 * kg / 200 * min;
 function sessionMinutes(k) { const p = PLAN[k]; const sets = p.main.reduce((a, m) => a + m[1], 0) + p.act.reduce((a, x) => a + x.sets, 0); return {warm: 15, main: Math.round(sets * 2.6), mob: 8, total: 15 + Math.round(sets * 2.6) + 8}; }
+const nSets = sets => Object.values(sets).reduce((a, x) => a + x.length, 0);
 function tonnage(sets) { let t = 0; Object.entries(sets).forEach(([id, arr]) => { const ex = EX[id]; if (ex && ex.kind === 'w') arr.forEach(s => { if (s.done) t += s.w * s.r * (ex.unit ? 2 : 1); }); }); return Math.round(t); }
 
 // ================= muscle map =================
@@ -357,7 +358,7 @@ function vToday() {
       <button class="btn line sm" data-act="gotorec">Все рекорды</button></section>` : ''}
     ${lastLog ? `<section class="card d${lastLog.day}"><div class="row between"><h2>Последняя тренировка</h2><span class="tag day">${lastLog.day}</span></div>
       <div class="grid3"><div class="stat"><span>${fdate(lastLog.date)}</span><b>${Math.round((lastLog.end - lastLog.start) / 60000)}</b><span>мин</span></div>
-      <div class="stat"><span>Тоннаж</span><b>${(tonnage(lastLog.sets) / 1000).toFixed(1).replace('.', ',')}</b><span>т</span></div>
+      <div class="stat"><span>Подходов</span><b>${nSets(lastLog.sets)}</b><span>рабочих</span></div>
       <div class="stat"><span>${esc(lastLog.src || 'оценка')}</span><b>${lastLog.kcal}</b><span>ккал</span></div></div>
       <button class="btn line sm" data-act="log" data-id="${lastLog.id}">Подробнее</button></section>` : ''}
     <section class="card flat"><h2>Твои цели</h2>
@@ -471,20 +472,20 @@ function vJournal() {
       ${ms.slice().reverse().map(b => `<tr><td>${fdate(b.date)}</td><td>${fmtKg(b.waist)}</td><td>${fmtKg(b.hips)}</td><td>${fmtKg(b.thigh)}</td></tr>`).join('')}</tbody></table></div></section>
       <form class="card" id="fm"><h2>Новый замер, см</h2><div class="grid3"><label class="f">Талия<input class="inp" type="number" step="0.1" id="fm-w" inputmode="decimal"></label><label class="f">Ягодицы<input class="inp" type="number" step="0.1" id="fm-h" inputmode="decimal"></label><label class="f">Бедро<input class="inp" type="number" step="0.1" id="fm-t" inputmode="decimal"></label></div><button class="btn">Сохранить</button></form>`;
   } else if (JTAB === 'logs') {
-    body = `<div class="list">${S.logs.slice().reverse().map(l => `<button class="item d${l.day}" data-act="log" data-id="${l.id}"><div class="thumb letter">${l.day}</div><div><div class="t">${fdate(l.date)} · ${PLAN[l.day].short}${(l.prs || []).length ? ' <span class="tag pr">' + l.prs.length + ' PR</span>' : ''}</div><div class="s">${Math.round((l.end - l.start) / 60000)} мин · ${l.kcal} ккал · ${esc(l.src || 'forma')}</div></div><div class="r"><b>${(tonnage(l.sets) / 1000).toFixed(1).replace('.', ',')} т</b><small>тоннаж</small></div></button>`).join('') || '<p class="item" style="display:block">Тренировок пока нет.</p>'}</div><button class="btn line block" data-act="pastday">+ Добавить прошлую тренировку</button>`;
+    body = `<div class="list">${S.logs.slice().reverse().map(l => `<button class="item d${l.day}" data-act="log" data-id="${l.id}"><div class="thumb letter">${l.day}</div><div><div class="t">${fdate(l.date)} · ${PLAN[l.day].short}${(l.prs || []).length ? ' <span class="tag pr">' + l.prs.length + ' PR</span>' : ''}</div><div class="s">${Math.round((l.end - l.start) / 60000)} мин · ${l.kcal} ккал · ${esc(l.src || 'forma')}</div></div><div class="r"><b>${nSets(l.sets)}</b><small>подходов</small></div></button>`).join('') || '<p class="item" style="display:block">Тренировок пока нет.</p>'}</div><button class="btn line block" data-act="pastday">+ Добавить прошлую тренировку</button>`;
   } else {
+    body = volumeCard() + weightForecastCard() + bodyForecastCard();
     const key = ['hip_thrust','leg_press','rdl','lat_pulldown'];
-    body = key.map(id => {
+    body += key.map(id => {
       const dk = Object.keys(PLAN).find(k => PLAN[k].main.some(m => m[0] === id));
-      const h = exHistory(id).filter(x => x.day === dk); if (h.length < 2) return '';
+      const h = exHistory(id).filter(x => x.day === dk && !x.sets.every(z => !z.w)); if (h.length < 2) return '';
       const pts = h.map(x => ({x: x.date, y: r1(e1rm(topSet(x.sets).w, topSet(x.sets).r))}));
       const proj = forecast(pts, EX[id]);
       const gain = Math.round((pts[pts.length - 1].y / pts[0].y - 1) * 100);
-      return `<section class="card"><div class="row between"><h3>${EX[id].name}</h3><span class="tag good">+${gain}%</span></div>
-        <p class="small muted">Расчётный максимум (1ПМ), ${unitOf(EX[id])}. Пунктир — прогноз на 8 недель при том же темпе.</p>
-        ${lineChart(pts, {proj, label: EX[id].name})}
-        <p class="small">Сейчас ≈ <b>${fmtKg(pts[pts.length - 1].y)}</b> → к ${fdate(proj[proj.length - 1].x)} ≈ <b>${fmtKg(proj[proj.length - 1].y)}</b></p></section>`;
-    }).join('') + (S.logs.length < 2 ? '<section class="card flat"><h2>Здесь появится прогресс</h2><p class="small muted">После двух тренировок с одним упражнением покажу график расчётного максимума и прогноз на 8 недель.</p></section>' : '') + `<section class="card"><h2>Чего ждать по срокам</h2>
+      return `<section class="card"><div class="row between"><h3>${EX[id].name}</h3><span class="tag good">${gain >= 0 ? '+' : ''}${gain}%</span></div>
+        <p class="small muted">Сила по твоим тренировкам: расчётный максимум на 1 раз, кг. Пунктир — куда ведёт нынешний темп.</p>
+        ${lineChart(pts, {proj, label: EX[id].name})}</section>`;
+    }).join('') + `<section class="card"><h2>Чего ждать по срокам</h2>
       <div class="tbl-wrap"><table class="tbl"><tbody>
       <tr><td><b>2–4 недели</b></td><td>Веса растут почти каждую тренировку — это техника и нервная система. Объёмы пока не меняются.</td></tr>
       <tr><td><b>6–8 недель</b></td><td>Первые видимые изменения ягодиц сверху и сбоку, поясница меньше устаёт, легче держать осанку.</td></tr>
@@ -493,6 +494,63 @@ function vJournal() {
       </tbody></table></div></section>`;
   }
   return `<div class="screen"><div class="screen-h"><span class="eyebrow">Веса, замеры, история</span><h1>Журнал</h1></div>${seg}${body}</div>`;
+}
+// ---------- прогноз и объём ----------
+const VOLT = {'Ягодицы':[12,20],'Задняя поверхность бедра':[6,12],'Квадрицепс':[6,12],'Спина':[8,14],'Поясница':[3,8],'Грудь':[4,10],'Плечи':[4,10],'Руки':[4,10],'Пресс':[4,10],'Приводящие':[2,6]};
+function weeklyVolume() {
+  const since = Date.now() - 7 * 864e5; const g = {}; RG.forEach(([n]) => g[n] = 0);
+  S.logs.filter(l => l.end >= since).forEach(l => Object.entries(l.sets).forEach(([id, arr]) => { const e = EX[id]; if (!e) return; const n = arr.length;
+    RG.forEach(([name, ms]) => { if (e.p.some(m => ms.includes(m))) g[name] += n; else if (e.s.some(m => ms.includes(m))) g[name] += n * 0.5; }); }));
+  return g;
+}
+function volumeCard() {
+  const g = weeklyVolume(); const tot = Object.values(g).reduce((a, b) => a + b, 0);
+  if (!tot) return `<section class="card flat"><h2>Подходы на мышцы</h2><p class="small muted">После первой тренировки здесь появится, сколько рабочих подходов за неделю получила каждая группа мышц, и в норме ли это для твоих целей.</p></section>`;
+  const rows = Object.entries(VOLT).map(([n, [lo, hi]]) => { const v = Math.round(g[n] * 2) / 2; const max = hi * 1.4; const st = v < lo ? ['мало', 'warn'] : v > hi * 1.25 ? ['много', 'warn'] : ['в норме', 'good'];
+    return `<div class="vrow"><div class="row between"><span class="small"><b>${n}</b></span><span class="small"><b class="num">${String(v).replace('.', ',')}</b> <span class="muted">из ${lo}–${hi}</span> <span class="tag ${st[1]}">${st[0]}</span></span></div>
+      <div class="vbar"><i class="band" style="left:${lo / max * 100}%;width:${(hi - lo) / max * 100}%"></i><i class="fill" style="width:${Math.min(100, v / max * 100)}%"></i></div></div>`; }).join('');
+  return `<section class="card"><div class="row between"><h2>Подходы за 7 дней</h2><span class="src">по мышцам</span></div>
+    <p class="small muted">Главная мера нагрузки для роста: сколько рабочих подходов получила мышца за неделю. Полоска — рекомендуемый коридор для твоих целей, на ягодицы — больше всего.</p>${rows}</section>`;
+}
+function forecastEx(id) {
+  const e = EX[id]; const pe = planExercises().find(x => x.id === id); const f = pe ? pe.days.length : 1; const k = pe ? pe.days[0] : 'A';
+  const row = PLAN[k].main.find(m => m[0] === id); const lo = row ? row[2] : 8, hi = row ? row[3] : 12;
+  const sg = suggest(id, k); if (sg.bw || sg.w == null || e.kind === 'bw') return null;
+  const h = exHistory(id).filter(x => !x.sets.every(z => !z.w));
+  let reps = h.length ? Math.max(...h[h.length - 1].sets.map(z => z.r)) : lo; if (sg.dir === 'up' || sg.dir === 'dn') reps = lo;
+  let pace = 1;
+  if (h.length >= 3) { let inc = 0; for (let i = 1; i < h.length; i++) if (h[i].sets[0].w !== h[i - 1].sets[0].w) inc++;
+    const r0 = Math.max(...h[0].sets.map(z => z.r)), r1x = Math.max(...h[h.length - 1].sets.map(z => z.r)); pace = Math.max(0.4, Math.min(1.6, (inc * (hi - lo + 1) + (r1x - r0)) / (h.length - 1))); }
+  const step = e.step || 2.5, dir = e.kind === 'a' ? -1 : 1; let w = sg.w, r = reps, cyc = 0, p = pace; const out = {now: w, unit: e.kind === 'a' ? 'кг помощи' : (e.unit || 'кг'), kind: e.kind};
+  out.next = Math.max(1, Math.ceil((hi - reps) / pace));
+  for (let sN = 1; sN <= 12 * f; sN++) { r += p; if (r >= hi) { w = Math.max(0, w + dir * step); r = lo; cyc++; p = Math.max(0.35, pace * (1 - 0.1 * cyc)); }
+    if (sN === 4 * f) out.w4 = w; if (sN === 8 * f) out.w8 = w; if (sN === 12 * f) out.w12 = w; }
+  return out;
+}
+function weightForecastCard() {
+  const ids = planExercises().map(x => x.id).filter(id => EX[id].kind === 'w' || EX[id].kind === 'a');
+  const rows = ids.map(id => [id, forecastEx(id)]).filter(x => x[1]);
+  if (!rows.length) return `<section class="card"><h2>Прогноз весов</h2><p class="small muted">Укажи рабочие веса — и здесь появится, с каким весом ты, скорее всего, будешь работать через 4, 8 и 12 недель.</p><button class="btn block" data-act="weights">Указать веса</button></section>`;
+  const fmt = (o, v) => o.kind === 'a' && v === 0 ? 'без помощи' : fmtKg(v);
+  return `<section class="card"><div class="row between"><h2>Прогноз весов</h2><span class="src">3 трен. в неделю</span></div>
+    <p class="small muted">Считаю по твоим весам и диапазону повторов: каждый раз +1 повтор, на верхней границе — прибавка веса, со временем темп замедляется. Когда накопится история, прогноз подстроится под твой реальный темп.</p>
+    ${(() => { const key = ['hip_thrust','leg_press','rdl','lat_pulldown','hip_abduction','cable_kickback'];
+      const ord = rows.slice().sort((x, y) => (key.indexOf(x[0]) + 1 || 99) - (key.indexOf(y[0]) + 1 || 99));
+      const row = ([id, o]) => `<div class="fcrow"><div class="row between"><button class="lnk" data-act="ex" data-id="${id}">${esc(EX[id].name)}</button><span class="small muted">прибавка через ~${o.next} ${plural(o.next, 'трен.', 'трен.', 'трен.')}</span></div>
+        <div class="fcg"><div><span>сейчас</span><b>${fmt(o, o.now)}</b></div><div><span>4 нед</span><b>${fmt(o, o.w4)}</b></div><div><span>8 нед</span><b>${fmt(o, o.w8)}</b></div><div class="hl"><span>12 нед</span><b>${fmt(o, o.w12)}</b></div></div>
+        <div class="small muted">${o.unit}</div></div>`;
+      return ord.slice(0, 6).map(row).join('') + (ord.length > 6 ? `<details class="fcmore"><summary>Ещё ${ord.length - 6} ${plural(ord.length - 6, 'упражнение', 'упражнения', 'упражнений')}</summary>${ord.slice(6).map(row).join('')}</details>` : ''); })()}
+    </section>`;
+}
+function bodyForecastCard() {
+  const P = S.profile, w = curWeight(); const prot = avgYazio('protein'); const n4 = S.logs.filter(l => l.end > Date.now() - 28 * 864e5).length;
+  const freq = n4 ? Math.min(4, n4 / 4) : 3; const freqF = freq >= 3 ? 1 : freq >= 2 ? 0.75 : 0.45; const protF = !prot ? 0.85 : prot / w < 1.4 ? 0.7 : prot / w < 1.6 ? 0.85 : 1;
+  const goalF = P.goal === 'cut' ? 0.55 : P.goal === 'recomp' ? 0.85 : 1; const m = 0.45 * 3 * freqF * protF * goalF;
+  const ms = S.body.filter(b => b.waist); const wd = ms.length >= 2 ? r1(ms[ms.length - 1].waist - ms[0].waist) : null; const hd = ms.length >= 2 ? r1(ms[ms.length - 1].hips - ms[0].hips) : null;
+  return `<section class="card"><h2>Прогноз тела на 12 недель</h2>
+    <div class="grid2"><div class="stat"><span>Мышцы</span><b>+${fmtKg(r1(m * .75))}…${fmtKg(r1(m * 1.25))}</b><span>кг · оценка</span></div>
+    <div class="stat"><span>Тренировок в неделю</span><b>${String(r1(freq)).replace('.', ',')}</b><span>${n4 ? 'за последние 4 недели' : 'по плану'}</span></div></div>
+    <p class="small muted">${protF < 1 ? 'Белка в среднем меньше 1,6 г на кг — мышцы будут расти медленнее. ' : prot ? 'Белка хватает. ' : 'Подключи Yazio, чтобы учитывать белок. '}${wd != null ? `Замеры: талия ${wd > 0 ? '+' : ''}${fmtKg(wd)} см, ягодицы ${hd > 0 ? '+' : ''}${fmtKg(hd)} см с ${fdate(ms[0].date)}.` : 'Добавляй замеры раз в 2–3 недели — вес может стоять, а форма меняться.'}</p></section>`;
 }
 function forecast(pts, ex) {
   // linear trend on last 4 weeks, weekly growth capped at 3% (beginner) and tapering
@@ -642,7 +700,7 @@ function logSheet(id) {
   const l = S.logs.find(x => x.id === id); if (!l) return;
   openSheet(sheetTop(`${fdate(l.date)} · тренировка ${l.day}`) + `
     <div class="grid3"><div class="stat"><span>Время</span><b>${Math.round((l.end - l.start) / 60000)} мин</b></div><div class="stat"><span>Ср. пульс</span><b>${l.avgHR || '—'}</b></div><div class="stat"><span>Ккал</span><b>${l.kcal}</b></div></div>
-    <p class="small muted">Пульс и калории — ${esc(l.src || 'оценка forma')}. Тоннаж ${tonnage(l.sets)} кг.</p>
+    <p class="small muted">Пульс и калории — ${esc(l.src || 'оценка forma')}. ${nSets(l.sets)} рабочих подходов.</p>
     <div class="list">${Object.entries(l.sets).map(([eid, sets]) => { const e = EX[eid]; return `<div class="item" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t">${esc(e.name)}</div></div><div class="r">${sets.map(s => (WEIGHTED(e.kind) && s.w ? fmtKg(s.w) + '×' : '') + s.r).join(' · ')}</div></div>`; }).join('')}</div>
     <div class="row wrap"><button class="btn sm" data-act="editlog" data-id="${l.id}">Изменить веса и повторы</button><button class="btn ghost sm" data-act="dellog" data-id="${l.id}">Удалить</button></div>`);
 }
@@ -815,7 +873,7 @@ function finishSession() {
     <section class="hero d${k}"><span class="letter" aria-hidden="true">${k}</span><span class="eyebrow">Тренировка ${k} · ${min} мин</span><h1>${nDone ? nDone + ' ' + plural(nDone, 'рабочий подход', 'рабочих подхода', 'рабочих подходов') : 'Подходы не отмечены'}</h1>
       <p>${nDone ? 'Сохранено в журнал. Веса на следующий раз уже посчитаны.' : 'Отметь хотя бы один подход галочкой, чтобы тренировка попала в журнал.'}</p></section>
     ${prs.length ? `<section class="card"><div class="row between"><h2>Новые рекорды</h2><span class="tag pr">${prs.length} PR</span></div><div class="prs">${prs.map(p => `<div class="prrow"><span class="small">${esc(EX[p.id].name)}<br><span class="muted">${p.label}</span></span><b>${p.text}</b></div>`).join('')}</div></section>` : ''}
-    <div class="grid3"><div class="stat"><span>Тоннаж</span><b>${tonnage(sets)}</b><span>кг</span></div><div class="stat"><span>Ккал, оценка</span><b>${kcal}</b><span>ккал</span></div><div class="stat"><span>Белок</span><b>${pr.g}</b><span>г за день</span></div></div>
+    <div class="grid3"><div class="stat"><span>Подходов</span><b>${nSets(sets)}</b><span>рабочих</span></div><div class="stat"><span>Ккал, оценка</span><b>${kcal}</b><span>ккал</span></div><div class="stat"><span>Белок</span><b>${pr.g}</b><span>г за день</span></div></div>
     <section class="note"><b>Питание:</b> в ближайшие 2 часа 25–35 г белка. Всего за день — ${pr.g} г (${pr.f.toString().replace('.', ',')} г/кг).</section>
     <section class="card"><div class="row between"><h3>Пульс и калории из Apple Watch</h3><span class="src"><span class="dot off"></span>не подтянуто</span></div>
       <p class="small muted">Быстрая команда «forma sync» заберёт из Apple Health активные калории и пульс за время этой тренировки.</p>
@@ -866,6 +924,7 @@ function syncSheet() {
     <section class="card"><h3>1. Запусти команду</h3><p class="small muted">Откроются «Команды», заберут данные из Apple Health за сегодня и скопируют их. Потом вернись сюда.</p>
       <label class="f">Название команды — точно как в приложении «Команды»<input class="inp" id="sc-name" value="${esc(scName())}" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></label>
       <button class="btn" data-act="runshortcut">Запустить команду</button>
+      ${S.settings.lastSyncRaw ? '<button class="btn line sm" data-act="syncres">Что пришло в прошлый раз</button>' : ''}
       <p class="small muted">Если «Команды» пишут, что команда не найдена: открой «Команды», посмотри точное название (с пробелами и регистром) и впиши его сюда.</p></section>
     <section class="card"><h3>2. Вставь данные</h3><button class="btn line" data-act="paste">Вставить из буфера</button>
       <details><summary class="small muted" style="cursor:pointer">Вставить вручную</summary><textarea class="inp" id="imp" style="margin-top:8px" placeholder='{"date":"${TODAY_ISO}","protein":96}'></textarea><button class="btn line sm" data-act="import" style="margin-top:8px">Импортировать</button></details></section>
@@ -889,6 +948,20 @@ function runShortcut() {
   if (n !== scName()) { S.settings.shortcutName = n; saveLocal(); }
   location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(n);
 }
+function syncResultSheet() {
+  const L = S.settings.lastSyncRaw; if (!L) return;
+  const r = L.raw; const has = k => r[k] != null && r[k] !== 0;
+  const F = [['protein','Белки, г','Yazio'],['eatKcal','Съедено, ккал','Yazio'],['fat','Жиры, г','Yazio'],['carbs','Углеводы, г','Yazio'],['activeKcal','Активные ккал за день','Apple Watch'],['steps','Шаги','iPhone / Watch'],['weight','Вес, кг','весы / вручную'],['workoutHR','Пульс на тренировке','Apple Watch'],['workoutKcal','Ккал тренировки','Apple Watch']];
+  const food = ['protein','eatKcal','fat','carbs'], foodN = food.filter(has).length;
+  const tips = [];
+  if (!foodN) tips.push('Питание не пришло. Проверь: Настройки iPhone → Приложения → Здоровье → Доступ к данным и устройства → YAZIO — запись питания включена; и что сегодня в Yazio уже есть записи.');
+  else if (foodN < 4) tips.push('Часть питания пришла, часть нет — проверь, что в YAZIO включена запись всех пунктов: Потреблённая энергия, Белки, Жиры, Углеводы.');
+  if (!has('activeKcal')) tips.push(has('workoutKcal') ? 'Активные калории за тренировку есть, а за день — нет. Пришли скриншот шага команды «Активная энергия, сегодня» — поправлю фильтр.' : 'Активные калории не пришли. Проверь, что Apple Watch записывает «Активную энергию» в Здоровье, и что «Команды» имеют доступ к ней: Настройки → Приложения → Здоровье → Доступ к данным и устройства → Быстрые команды.');
+  if ((has('workoutHR') || has('workoutKcal')) && !L.hadLog) tips.push('Пульс тренировки пришёл, но сегодня в forma. нет тренировки — запусти команду после того, как отметишь тренировку.');
+  openSheet(sheetTop('Что пришло') + `<div class="list">${F.map(([k, l, src]) => `<div class="item" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t">${l}</div><div class="s">${src}</div></div><div class="r">${has(k) ? `<b>${fmtKg(r[k])}</b>` : '<span class="tag warn">нет данных</span>'}</div></div>`).join('')}</div>
+    ${tips.length ? `<section class="note"><b>Что проверить</b><ul class="clean small" style="margin-top:6px">${tips.map(t => `<li>${t}</li>`).join('')}</ul></section>` : '<section class="note"><b>Всё пришло.</b> Можно запускать команду после каждой тренировки и вечером, когда внесёшь еду.</section>'}
+    <button class="btn block" data-act="close">Понятно</button>`);
+}
 async function pasteSync() {
   try { const t = await navigator.clipboard.readText(); toast(mergeSync(t)); }
   catch (e) { toast('Не получилось прочитать буфер. Вставь вручную ниже.'); const d = $('#sheet details'); if (d) d.open = true; }
@@ -904,8 +977,10 @@ function mergeSync(text) {
   const hr = toNum(j.workoutHR), kc = toNum(j.workoutKcal);
   const log = S.logs.filter(l => l.date === date).pop();
   if (log && (hr || kc)) { if (hr) log.avgHR = Math.round(hr); if (kc) log.kcal = Math.round(kc + metKcal(1, curWeight(), (log.end - log.start) / 60000)); log.src = 'Apple Watch'; n++; }
-  if (!n) return 'В данных нет знакомых полей — проверь названия ключей.';
-  S.settings.lastSync = TODAY_ISO; save(); closeSheet(); render();
+  const raw = {}; ['protein','eatKcal','fat','carbs','activeKcal','steps','weight','workoutHR','workoutKcal'].forEach(k => raw[k] = toNum(j[k]));
+  S.settings.lastSyncRaw = {at: Date.now(), raw, hadLog: !!log};
+  if (!n) { save(); return 'В данных нет знакомых полей — проверь названия ключей.'; }
+  S.settings.lastSync = TODAY_ISO; save(); closeSheet(); render(); setTimeout(syncResultSheet, 250);
   return 'Синхронизировано за ' + fdate(date);
 }
 function exportBackup() {
@@ -1181,6 +1256,7 @@ document.addEventListener('click', e => {
   else if (a === 'gsync') { if (gValid()) driveSync(true); else gSignIn(); }
   else if (a === 'glogout') gSignOut();
   else if (a === 'backups') backupsSheet();
+  else if (a === 'syncres') syncResultSheet();
   else if (a === 'weights') weightsSheet();
   else if (a === 'wbw') { const id = b.dataset.id; const c = curW(id); const cur = (S.weights || {})[id] || {w: c.w, bw: !!c.bw || (EX[id].kind === 'bw' && !c.w)}; setW(id, cur.w, !cur.bw); wSync(id); }
   else if (a === 'wstep') { const id = b.dataset.id, e = EX[id]; const inp = $('#w-' + id); const v = parseFloat(String(inp.value).replace(',', '.')) || 0; const nv = Math.max(0, r1(v + (+b.dataset.d) * (e.step || 2.5))); setW(id, nv, false); wSync(id); inp.value = String(nv); }
