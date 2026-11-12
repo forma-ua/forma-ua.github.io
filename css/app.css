@@ -323,3 +323,21 @@ button.wd{border:0;font:inherit;cursor:pointer}
 .cd.miss{background:transparent;border:1.5px dashed var(--line)} .cd.miss i{color:var(--faint)}
 .cd.done{background:var(--day);color:var(--accent-ink)} .cd.done b{color:var(--accent-ink)}
 .cd.today{outline:1.5px solid var(--ink);outline-offset:1px}
+/* объём и прогноз */
+.vrow{display:flex;flex-direction:column;gap:5px;padding:6px 0}
+.vbar{position:relative;height:8px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.vbar .band{position:absolute;top:0;bottom:0;background:var(--good-soft)}
+.vbar .fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:99px;opacity:.85}
+table.fc td,table.fc th{white-space:nowrap}
+table.fc td:first-child{white-space:normal;min-width:150px}
+table.fc .up{color:var(--good)}
+.lnk{border:0;background:none;padding:0;text-align:left;font:inherit;font-weight:600;color:var(--ink);cursor:pointer}
+.fcrow{padding:12px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.fcrow:first-of-type{border-top:0}
+.fcg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.fcg>div{background:var(--sunk);border-radius:12px;padding:7px 8px;display:flex;flex-direction:column;gap:1px}
+.fcg span{font-size:11px;color:var(--muted)}
+.fcg b{font-size:15px;font-variant-numeric:tabular-nums}
+.fcg .hl{background:var(--good-soft)}.fcg .hl b{color:var(--good)}
+.fcmore summary{cursor:pointer;padding:10px 0;font-weight:600;color:var(--accent);list-style:none}
+.fcmore summary::-webkit-details-marker{display:none}
