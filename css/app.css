@@ -365,3 +365,5 @@ details.fold>summary .fm{max-width:42vw}
 /* без пустого места внизу страниц */
 html,body{height:auto;min-height:100%}
 .shell{overflow:clip}
+.shell,.app{min-height:0}
+.shell{align-content:start;align-items:start}
