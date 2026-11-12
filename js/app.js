@@ -750,7 +750,9 @@ function settingsSheet() {
 function syncSheet() {
   openSheet(sheetTop('Синхронизация') + `
     <section class="card"><h3>1. Запусти команду</h3><p class="small muted">Откроются «Команды», заберут данные из Apple Health за сегодня и скопируют их. Потом вернись сюда.</p>
-      <button class="btn" data-act="runshortcut">Запустить «forma sync»</button></section>
+      <label class="f">Название команды — точно как в приложении «Команды»<input class="inp" id="sc-name" value="${esc(scName())}" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></label>
+      <button class="btn" data-act="runshortcut">Запустить команду</button>
+      <p class="small muted">Если «Команды» пишут, что команда не найдена: открой «Команды», посмотри точное название (с пробелами и регистром) и впиши его сюда.</p></section>
     <section class="card"><h3>2. Вставь данные</h3><button class="btn line" data-act="paste">Вставить из буфера</button>
       <details><summary class="small muted" style="cursor:pointer">Вставить вручную</summary><textarea class="inp" id="imp" style="margin-top:8px" placeholder='{"date":"${TODAY_ISO}","protein":96}'></textarea><button class="btn line sm" data-act="import" style="margin-top:8px">Импортировать</button></details></section>
     <details class="acc"><summary><h2>Как создать команду «forma sync»</h2></summary><div class="acc-b small">
@@ -767,12 +769,11 @@ function syncSheet() {
       <p>В Yazio включи запись в Apple Health: Профиль → Настройки → Apple Health. При первом запуске команда попросит доступ к данным Здоровья — разреши.</p>
     </div></details>`);
 }
+const scName = () => (S.settings.shortcutName || 'forma sync').trim();
 function runShortcut() {
-  const today = S.logs.filter(l => l.date === TODAY_ISO).pop();
-  const from = today ? new Date(today.start) : new Date(TODAY), to = today ? new Date(today.end) : new Date();
-  const pad = d => iso(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-  const input = JSON.stringify({from: pad(from), to: pad(to), date: TODAY_ISO});
-  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent('forma sync') + '&input=text&text=' + encodeURIComponent(input);
+  const n = ($('#sc-name')?.value || scName()).trim();
+  if (n !== scName()) { S.settings.shortcutName = n; saveLocal(); }
+  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(n);
 }
 async function pasteSync() {
   try { const t = await navigator.clipboard.readText(); toast(mergeSync(t)); }
