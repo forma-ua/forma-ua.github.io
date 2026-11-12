@@ -348,7 +348,7 @@ function vToday() {
     </div></section>
     <section class="grid2">
       ${!Object.keys(S.health).length ? '<button class="stat" data-act="sync" style="grid-column:1/-1;border:1px dashed var(--line)"><span>Apple Health и Yazio ещё не подтянуты</span><b style="font-size:20px">Синхронизировать</b></button>' : ''}
-      <div class="stat"><span>Съедено, Yazio</span><b>${hd.eatKcal ?? '—'}</b><span>ккал</span></div>
+      <div class="stat"><span>Съедено, Yazio</span><b>${hd.eatKcal ? (hd.eatEst ? '≈' : '') + hd.eatKcal : '—'}</b><span>${hd.eatEst ? 'ккал · по БЖУ' : 'ккал'}</span></div>
       <div class="stat"><span>Активные, Apple Health</span><b>${hd.activeKcal ?? '—'}</b><span>ккал</span></div>
       <div class="stat"><span>Вес тела</span><b>${fmtKg(curWeight())}</b><span>кг</span></div>
       <div class="stat"><span>Б · Ж · У</span><b>${hd.protein ?? '—'}·${hd.fat ?? '—'}·${hd.carbs ?? '—'}</b><span>г</span></div>
@@ -952,13 +952,16 @@ function syncResultSheet() {
   const L = S.settings.lastSyncRaw; if (!L) return;
   const r = L.raw; const has = k => r[k] != null && r[k] !== 0;
   const F = [['protein','Белки, г','Yazio'],['eatKcal','Съедено, ккал','Yazio'],['fat','Жиры, г','Yazio'],['carbs','Углеводы, г','Yazio'],['activeKcal','Активные ккал за день','Apple Watch'],['steps','Шаги','iPhone / Watch'],['weight','Вес, кг','весы / вручную'],['workoutHR','Пульс на тренировке','Apple Watch'],['workoutKcal','Ккал тренировки','Apple Watch']];
-  const food = ['protein','eatKcal','fat','carbs'], foodN = food.filter(has).length;
-  const tips = [];
+  const food = ['protein','fat','carbs'], foodN = food.filter(has).length;
+  const tips = []; const tx = L.txt || {};
+  const val = k => k === 'workoutHR' && L.lowHR ? `<span class="tag warn">${L.lowHR} — не тренировка</span>` : has(k) ? `<b>${fmtKg(r[k])}</b>` : k === 'eatKcal' && L.est ? `<b>≈${L.est}</b>` : k === 'workoutHR' && L.lowHR ? `<span class="tag warn">${L.lowHR} — не тренировка</span>` : tx[k] ? `<span class="tag warn">«${esc(tx[k])}»</span>` : '<span class="tag warn">нет данных</span>';
+  if (!has('eatKcal') && L.est) tips.push('Калории еды не пришли из Здоровья, поэтому forma. посчитала их по белкам, жирам и углеводам (≈' + L.est + ' ккал) — это почти точно. Чтобы приходили напрямую, включи «Потреблённая энергия» в доступе YAZIO и «Быстрых команд» (см. ниже).');
+  if (L.lowHR) tips.push('Пульс ' + L.lowHR + ' — это покой, а не тренировка: команда берёт последние 2 часа. Запускай её сразу после тренировки — тогда пульс и калории привяжутся к ней.');
   if (!foodN) tips.push('Питание не пришло. Проверь: Настройки iPhone → Приложения → Здоровье → Доступ к данным и устройства → YAZIO — запись питания включена; и что сегодня в Yazio уже есть записи.');
-  else if (foodN < 4) tips.push('Часть питания пришла, часть нет — проверь, что в YAZIO включена запись всех пунктов: Потреблённая энергия, Белки, Жиры, Углеводы.');
-  if (!has('activeKcal')) tips.push(has('workoutKcal') ? 'Активные калории за тренировку есть, а за день — нет. Пришли скриншот шага команды «Активная энергия, сегодня» — поправлю фильтр.' : 'Активные калории не пришли. Проверь, что Apple Watch записывает «Активную энергию» в Здоровье, и что «Команды» имеют доступ к ней: Настройки → Приложения → Здоровье → Доступ к данным и устройства → Быстрые команды.');
+  else if (foodN < 3) tips.push('Часть питания пришла, часть нет — проверь, что в YAZIO включена запись всех пунктов: Потреблённая энергия, Белки, Жиры, Углеводы.');
+  if (!has('activeKcal') || (!has('eatKcal'))) tips.push('Калории в Здоровье — это отдельные типы «Активная энергия» и «Потреблённая энергия», и доступ «Быстрых команд» к каждому типу включается отдельно. Открой Настройки → Приложения → Здоровье → Доступ к данным и устройства → Быстрые команды и включи «Активная энергия» и «Потреблённая энергия» (проще — «Включить все»).');
   if ((has('workoutHR') || has('workoutKcal')) && !L.hadLog) tips.push('Пульс тренировки пришёл, но сегодня в forma. нет тренировки — запусти команду после того, как отметишь тренировку.');
-  openSheet(sheetTop('Что пришло') + `<div class="list">${F.map(([k, l, src]) => `<div class="item" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t">${l}</div><div class="s">${src}</div></div><div class="r">${has(k) ? `<b>${fmtKg(r[k])}</b>` : '<span class="tag warn">нет данных</span>'}</div></div>`).join('')}</div>
+  openSheet(sheetTop('Что пришло') + `<div class="list">${F.map(([k, l, src]) => `<div class="item" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t">${l}</div><div class="s">${src}</div></div><div class="r">${val(k)}</div></div>`).join('')}</div>
     ${tips.length ? `<section class="note"><b>Что проверить</b><ul class="clean small" style="margin-top:6px">${tips.map(t => `<li>${t}</li>`).join('')}</ul></section>` : '<section class="note"><b>Всё пришло.</b> Можно запускать команду после каждой тренировки и вечером, когда внесёшь еду.</section>'}
     <button class="btn block" data-act="close">Понятно</button>`);
 }
@@ -971,14 +974,16 @@ function mergeSync(text) {
   let j; try { j = JSON.parse(text); } catch (e) { return 'Не получилось прочитать данные. Проверь, что команда скопировала словарь.'; }
   const date = /^\d{4}-\d{2}-\d{2}$/.test(j.date || '') ? j.date : TODAY_ISO;
   const h = S.health[date] = S.health[date] || {}; let n = 0;
-  ['activeKcal','steps','eatKcal','protein','fat','carbs'].forEach(k => { const v = toNum(j[k]); if (v != null) { h[k] = Math.round(v); n++; } });
+  ['activeKcal','steps','eatKcal','protein','fat','carbs'].forEach(k => { const v = toNum(j[k]); if (v) { h[k] = Math.round(v); n++; } });
+  if (!toNum(j.eatKcal) && (h.protein || h.fat || h.carbs)) { h.eatKcal = Math.round((h.protein || 0) * 4 + (h.fat || 0) * 9 + (h.carbs || 0) * 4); h.eatEst = 1; } else if (toNum(j.eatKcal)) delete h.eatEst;
   const w = toNum(j.weight);
   if (w) { S.body = S.body.filter(b => b.date !== date || b.waist); const m = S.body.find(b => b.date === date); if (m) m.weight = r1(w); else S.body.push({date, weight: r1(w)}); S.body.sort((x, y) => x.date < y.date ? -1 : 1); n++; }
-  const hr = toNum(j.workoutHR), kc = toNum(j.workoutKcal);
+  const hr0 = toNum(j.workoutHR), hr = hr0 && hr0 >= 90 ? hr0 : null, kc = toNum(j.workoutKcal);
   const log = S.logs.filter(l => l.date === date).pop();
   if (log && (hr || kc)) { if (hr) log.avgHR = Math.round(hr); if (kc) log.kcal = Math.round(kc + metKcal(1, curWeight(), (log.end - log.start) / 60000)); log.src = 'Apple Watch'; n++; }
   const raw = {}; ['protein','eatKcal','fat','carbs','activeKcal','steps','weight','workoutHR','workoutKcal'].forEach(k => raw[k] = toNum(j[k]));
-  S.settings.lastSyncRaw = {at: Date.now(), raw, hadLog: !!log};
+  const txt = {}; ['eatKcal','activeKcal','workoutKcal'].forEach(k => { if (j[k] != null && j[k] !== '' && !toNum(j[k])) txt[k] = String(j[k]).slice(0, 40); });
+  S.settings.lastSyncRaw = {at: Date.now(), raw, txt, est: h.eatEst ? h.eatKcal : null, lowHR: hr0 && !hr ? Math.round(hr0) : null, hadLog: !!log};
   if (!n) { save(); return 'В данных нет знакомых полей — проверь названия ключей.'; }
   S.settings.lastSync = TODAY_ISO; save(); closeSheet(); render(); setTimeout(syncResultSheet, 250);
   return 'Синхронизировано за ' + fdate(date);
