@@ -933,9 +933,11 @@ function settingsSheet() {
     <p class="small muted" style="font-size:11px;opacity:.6">${diagText()}</p>`);
 }
 function diagText() {
-  try { const sh = document.querySelector('.shell'); let mb = 0, who = '';
-    document.querySelectorAll('body *').forEach(e => { if (e.closest('#sheet') || e.closest('details:not([open])>.fb')) return; const cs = getComputedStyle(e); if (cs.position === 'fixed' || cs.display === 'none') return; const b = e.getBoundingClientRect().bottom + scrollY; if (b > mb) { mb = b; who = e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className ? '.' + e.className.split(' ')[0] : ''); } });
-    return `экран ${TAB} · документ ${document.documentElement.scrollHeight} · контент ${Math.round(sh ? sh.getBoundingClientRect().height : 0)} · окно ${innerHeight} · ниже всех: ${who} ${Math.round(mb)}`; } catch (e) { return ''; }
+  try { const H = el => el ? Math.round(el.getBoundingClientRect().height) : '-'; const B = el => Math.round(el.getBoundingClientRect().bottom + scrollY);
+    const sc = document.querySelector('#screen>.screen') || document.querySelector('#screen');
+    const kids = sc ? [...sc.children].map(e => (e.tagName.toLowerCase() + '.' + (typeof e.className === 'string' ? e.className.split(' ')[0] : '')) + ':' + H(e) + '@' + B(e)).slice(-4).join(' ') : '';
+    const cs = getComputedStyle(document.getElementById('app'));
+    return `экран ${TAB} · doc ${document.documentElement.scrollHeight} · html ${H(document.documentElement)} · body ${H(document.body)} · shell ${H(document.querySelector('.shell'))} · app ${H(document.getElementById('app'))} (min ${cs.minHeight}, pb ${cs.paddingBottom}) · top ${H(document.querySelector('.top'))} · main ${H(document.getElementById('screen'))} · scr ${H(sc)} · окно ${innerHeight}/${Math.round(visualViewport ? visualViewport.height : 0)} · ${kids}`; } catch (e) { return 'diag: ' + e.message; }
 }
 
 function syncSheet() {
