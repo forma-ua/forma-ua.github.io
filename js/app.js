@@ -26,7 +26,8 @@ function toast(msg) {
 // ================= storage =================
 const KEY = 'forma.v1';
 let S;
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function save() { S.updatedAt = Date.now(); saveLocal(); if (S.google) { if (gValid()) { clearTimeout(SYNC_T); SYNC_T = setTimeout(() => driveSync(false), 2500); } else S.google.pending = true; } }
 const emptyState = () => ({sample:false, profile:{sex:'f',age:30,height:166,restHR:64,goal:'recomp',level:'beginner',freq:3,activity:1.375}, logs:[], body:[], health:{}, settings:{}, onboarded:false});
 let FRESH = false;
 function load() {
@@ -64,6 +65,7 @@ function seed() {
     st.logs.push({id: 'l' + idx, date, day: k, start: +startT, end: +startT + dur * 60000, sets, warm: true, mob: true, avgHR: hr,
       kcal: Math.round(260 + rnd() * 80), src: 'Apple Watch'});
   });
+  st.logs.forEach(l => { const keep = S; S = st; l.prs = prsFor(l); S = keep; });
   // body weight & measurements
   let w = 62.4;
   for (let i = 30; i >= 0; i -= 3) {
@@ -151,13 +153,13 @@ const SH = {
 };
 const SIL_HALF = '<path d="M60 40 L76 42 Q86 45 87 56 L84 78 L82 100 L83 124 Q84 134 80 140 L60 142 Z"/><path d="M84 47 Q93 49 95 62 L97 86 L102 108 L105 128 Q105 135 100 133 L95 112 L89 90 L85 70 Z"/><path d="M60 140 L80 137 Q87 150 84 172 L80 200 L80 236 L82 252 L71 254 L69 236 L67 200 L63 172 L60 150 Z"/>';
 const SIL_MID = '<circle cx="60" cy="20" r="12"/><rect x="54" y="29" width="12" height="12" rx="3"/>';
-function figure(view, p, s) {
-  const col = id => p.includes(id) ? 'var(--hot)' : s.includes(id) ? 'var(--warm)' : 'var(--idle)';
+function figure(view, p, s, cmap) {
+  const col = id => cmap ? (cmap[id] || 'var(--idle)') : p.includes(id) ? 'var(--hot)' : s.includes(id) ? 'var(--warm)' : 'var(--idle)';
   const half = Object.entries(SH[view]).map(([id, d]) => `<g fill="${col(id)}">${d}</g>`).join('');
   return `<g fill="var(--body)">${SIL_MID}${SIL_HALF}<g transform="translate(120 0) scale(-1 1)">${SIL_HALF}</g></g>${half}<g transform="translate(120 0) scale(-1 1)">${half}</g>`;
 }
-function bodyMap(p = [], s = []) {
-  return `<svg viewBox="0 0 250 272" role="img" aria-label="Карта мышц: спереди и сзади">${figure('front', p, s)}<g transform="translate(130 0)">${figure('back', p, s)}</g>
+function bodyMap(p = [], s = [], cmap) {
+  return `<svg viewBox="0 0 250 272" role="img" aria-label="Карта мышц: спереди и сзади">${figure('front', p, s, cmap)}<g transform="translate(130 0)">${figure('back', p, s, cmap)}</g>
     <text x="60" y="270" text-anchor="middle" font-size="10" fill="var(--muted)">спереди</text><text x="190" y="270" text-anchor="middle" font-size="10" fill="var(--muted)">сзади</text></svg>`;
 }
 function miniMap(p = [], s = []) {
@@ -197,75 +199,151 @@ let TAB = 'today', PLANTAB = planKeyFor(TODAY) || nextWorkout().key, LIBCAT = 'a
 function nextWorkout() { for (let i = 0; i < 8; i++) { const d = addDays(TODAY, i); const k = planKeyFor(d); if (k) return {key: k, date: d, inDays: i}; } return {key: 'A', date: TODAY, inDays: 0}; }
 
 const ICONS = {
-  today:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>',
-  plan:'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
-  lib:'<svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12"/></svg>',
-  journal:'<svg viewBox="0 0 24 24"><path d="M4 19l5-6 4 3 7-9"/><path d="M4 4v15h16"/></svg>',
-  calc:'<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M8 7h8M8 12h2M14 12h2M8 16h2M14 16h2"/></svg>',
-  gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg>',
+  today:'<svg viewBox="0 0 24 24"><path d="M12 3.5c3 2.6 5 5.4 5 8.6a5 5 0 0 1-10 0c0-3.2 2-6 5-8.6z"/><path d="M12 20.5v-3"/></svg>',
+  plan:'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="4"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
+  lib:'<svg viewBox="0 0 24 24"><path d="M6.5 8v8M17.5 8v8M3.5 10v4M20.5 10v4M6.5 12h11"/></svg>',
+  journal:'<svg viewBox="0 0 24 24"><path d="M4 18l5-6 4 3 7-8"/><circle cx="20" cy="7" r="1.2"/></svg>',
+  calc:'<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="4"/><path d="M8.5 7.5h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/></svg>',
+  gear:'<svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.5"/><path d="M5 20c1.2-3.4 3.8-5 7-5s5.8 1.6 7 5"/></svg>',
   sync:'<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>'
 };
+const GOOGLE_G = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.4 5.7c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
 const TABS = [['today','Сегодня'],['plan','План'],['lib','Упражнения'],['journal','Журнал'],['calc','Расчёты']];
 
 function render() {
+  const acct = S.google?.picture ? `<button class="icon-btn" data-act="settings" aria-label="Аккаунт и настройки"><img src="${esc(S.google.picture)}" alt="" referrerpolicy="no-referrer"></button>`
+    : `<button class="icon-btn" data-act="settings" aria-label="Профиль и настройки">${ICONS.gear}</button>`;
+  const cloud = S.google && !gValid() && S.google.pending ? '<button class="pill warn" data-act="gsync">Сохранить в Google</button>' : '';
   $('#app').innerHTML = `
     <header class="top">
       <div class="logo" aria-label="forma">forma<i>.</i></div>
-      <div class="top-actions">
-        ${S.sample ? '<button class="sample-pill" data-act="settings">Пример данных</button>' : ''}
-        <button class="icon-btn" data-act="settings" aria-label="Профиль и синхронизация">${ICONS.gear}</button>
-      </div>
+      <div class="top-actions">${S.sample ? '<button class="sample-pill" data-act="settings">Пример данных</button>' : ''}${cloud}${acct}</div>
     </header>
     <main id="screen">${({today: vToday, plan: vPlan, lib: vLib, journal: vJournal, calc: vCalc})[TAB]()}</main>`;
   $('#nav').innerHTML = `<div class="nav-in">${TABS.map(([k, l]) => `<button data-tab="${k}" ${TAB === k ? 'aria-current="page"' : ''}>${ICONS[k]}<span>${l}</span></button>`).join('')}</div>`;
   if (TAB === 'calc') calcAll();
 }
 
+// ---------- кольца, восстановление, рекорды ----------
+function ringSVG(segs, size = 112, stroke = 9) {
+  const r = (size - stroke) / 2, C = 2 * Math.PI * r, gap = segs.length > 1 ? 10 : 0;
+  let off = 0; const out = [];
+  segs.forEach(s => { const len = C / segs.length - gap; const fill = Math.max(0, Math.min(1, s.frac)) * len;
+    out.push(`<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--sunk)" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"/>`);
+    if (fill > 0) out.push(`<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${fill} ${C - fill}" stroke-dashoffset="${-off}" style="--len:${fill};animation:draw 1.1s cubic-bezier(.2,.8,.2,1)"/>`);
+    off += C / segs.length; });
+  return `<svg viewBox="0 0 ${size} ${size}" aria-hidden="true">${out.join('')}</svg>`;
+}
+const BIG = ['glutemax','quads','hamstrings','lats','midback','lowerback','chest','adductors'];
+const RG = [['Ягодицы',['glutemax','glutemed']],['Задняя поверхность бедра',['hamstrings']],['Квадрицепс',['quads']],['Спина',['lats','midback']],['Поясница',['lowerback']],['Грудь',['chest']],['Плечи',['shoulders','reardelts']],['Руки',['biceps','triceps']],['Пресс',['abs','obliques']],['Приводящие',['adductors']]];
+function recovery(now = Date.now()) {
+  const fat = {};
+  S.logs.forEach(l => {
+    const h = (now - l.end) / 36e5; if (h < 0 || h > 130) return;
+    const load = {};
+    Object.entries(l.sets).forEach(([id, arr]) => { const e = EX[id]; if (!e) return; const n = arr.length;
+      e.p.forEach(m => load[m] = (load[m] || 0) + n); e.s.forEach(m => load[m] = (load[m] || 0) + n * 0.5); });
+    Object.entries(load).forEach(([m, L]) => { const T = (BIG.includes(m) ? 72 : 48) * Math.min(1.2, Math.max(0.5, L / 4)); const f = Math.max(0, 1 - h / T); if (f > (fat[m] || 0)) fat[m] = f; });
+  });
+  const out = {}; Object.keys(MUSCLES).forEach(m => out[m] = Math.round(100 * (1 - (fat[m] || 0)))); return out;
+}
+const recColor = p => p < 50 ? 'var(--hot)' : p < 85 ? 'var(--warm)' : 'var(--fresh)';
+function recoveryCard() {
+  const r = recovery(); const cmap = {}; Object.entries(r).forEach(([m, p]) => cmap[m] = recColor(p));
+  const g = RG.map(([n, ms]) => [n, Math.min(...ms.map(m => r[m]))]);
+  const grp = (lo, hi) => g.filter(x => x[1] >= lo && x[1] < hi);
+  const tired = grp(0, 50), mid = grp(50, 85), ready = grp(85, 101);
+  const li = (t, arr) => arr.length ? `<div><b>${t}</b>${arr.map(x => x[0] + (x[1] < 100 ? ` <span class="muted num">${x[1]}%</span>` : '')).join(', ')}</div>` : '';
+  return `<section class="card" aria-label="Восстановление мышц"><div class="row between"><h2>Восстановление</h2><span class="src">по твоим тренировкам</span></div>
+    <div class="recov">${bodyMap([], [], cmap)}<div class="rlist">${tired.length || mid.length ? li('Отдыхают', tired) + li('Почти готовы', mid) + li('Готовы', ready) : '<div><b>Всё готово</b>Мышцы восстановились — можно работать в полную силу.</div>'}</div></div>
+    <div class="legend3"><span><i style="background:var(--hot)"></i>нагружены</span><span><i style="background:var(--warm)"></i>восстанавливаются</span><span><i style="background:var(--fresh)"></i>готовы</span></div></section>`;
+}
+function bestBefore(id, end) {
+  let w = 0, e = 0, a = Infinity, r = 0, had = false;
+  S.logs.forEach(l => { if (l.end >= end) return; const arr = l.sets[id]; if (!arr) return; had = true; arr.forEach(s => { w = Math.max(w, s.w); e = Math.max(e, e1rm(s.w, s.r)); if (s.r > 0) a = Math.min(a, s.w); r = Math.max(r, s.r); }); });
+  return {w, e, a, r, had};
+}
+function prsFor(log) {
+  const out = [];
+  Object.entries(log.sets).forEach(([id, arr]) => { const ex = EX[id]; if (!ex || !arr.length) return; const b = bestBefore(id, log.end); if (!b.had) return;
+    if (ex.kind === 'w') { const mw = Math.max(...arr.map(s => s.w)), me = Math.max(...arr.map(s => e1rm(s.w, s.r)));
+      if (mw > b.w) out.push({id, text: fmtKg(mw) + ' ' + unitOf(ex), label: 'новый рабочий вес'});
+      else if (me > b.e * 1.02) out.push({id, text: '1ПМ ≈ ' + fmtKg(r1(me)) + ' кг', label: 'новый расчётный максимум'}); }
+    else if (ex.kind === 'a') { const ma = Math.min(...arr.map(s => s.w)); if (ma < b.a) out.push({id, text: fmtKg(ma) + ' кг помощи', label: 'меньше помощи'}); }
+    else { const mr = Math.max(...arr.map(s => s.r)); if (mr >= b.r + (ex.kind === 't' ? 5 : 2)) out.push({id, text: mr + (ex.kind === 't' ? ' сек' : ' повт.'), label: 'больше повторов'}); }
+  });
+  return out;
+}
+function weekStats() {
+  const monday = addDays(TODAY, -((TODAY.getDay() + 6) % 7));
+  const wkKey = d => iso(addDays(d, -((d.getDay() + 6) % 7)));
+  const by = {}; S.logs.forEach(l => { const k = wkKey(parseISO(l.date)); (by[k] = by[k] || new Set()).add(l.day); });
+  const done = by[iso(monday)] || new Set();
+  let streak = done.size >= 3 ? 1 : 0; let d = addDays(monday, -7);
+  while (by[iso(d)] && by[iso(d)].size >= 3) { streak++; d = addDays(d, -7); }
+  return {monday, done, streak};
+}
+function greeting() {
+  const h = new Date().getHours(); const g = h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
+  const n = S.google?.name || S.profile.name; return n ? `${g}, <em>${esc(n)}</em>` : g;
+}
+
 // ---------- Сегодня ----------
 function vToday() {
   const k = planKeyFor(TODAY); const nx = nextWorkout(); const pr = proteinFor(k); const hd = S.health[TODAY_ISO] || {};
   const doneToday = S.logs.find(l => l.date === TODAY_ISO);
-  const monday = addDays(TODAY, -((TODAY.getDay() + 6) % 7));
-  const week = [...Array(7)].map((_, i) => { const d = addDays(monday, i); const kk = planKeyFor(d); const done = S.logs.some(l => l.date === iso(d));
-    return `<div class="wd ${kk ? 'on' : ''} ${iso(d) === TODAY_ISO ? 'today' : ''} ${done ? 'done' : ''}">${DOW[d.getDay()]}<b>${kk || '·'}</b></div>`; }).join('');
-  const hero = k ? `
-    <section class="hero" aria-label="Тренировка сегодня"><span class="letter" aria-hidden="true">${k}</span>
-      <span class="eyebrow">Сегодня · тренировка ${k}</span><h1>${PLAN[k].title}</h1>
-      <p>${PLAN[k].accent}</p>
-      <div class="row wrap"><button class="btn light" data-act="start" data-k="${k}">${doneToday ? 'Повторить' : 'Начать тренировку'}</button><button class="btn sm" style="background:transparent;color:inherit;border:1px solid currentColor" data-act="gotoplan" data-k="${k}">План дня</button></div>
-    </section>` : `
-    <section class="hero" aria-label="День отдыха"><span class="letter" aria-hidden="true">${nx.key}</span>
-      <span class="eyebrow">Сегодня ${DOWL[TODAY.getDay()]} · день отдыха</span><h1>${nx.inDays === 1 ? 'Завтра' : DOWL[nx.date.getDay()][0].toUpperCase() + DOWL[nx.date.getDay()].slice(1)} — тренировка ${nx.key}</h1>
-      <p>${PLAN[nx.key].title}. Сегодня можно сделать 12-минутный комплекс для таза из гида — он не мешает восстановлению.</p>
-      <div class="row wrap"><button class="btn light" data-act="restflow">Комплекс 12 минут</button><button class="btn sm" style="background:transparent;color:inherit;border:1px solid currentColor" data-act="start" data-k="${nx.key}">Начать ${nx.key} сейчас</button></div>
+  const ws = weekStats();
+  const week = [...Array(7)].map((_, i) => { const d = addDays(ws.monday, i); const kk = planKeyFor(d); const done = S.logs.some(l => l.date === iso(d));
+    return `<div class="wd ${kk ? 'on d' + kk : ''} ${iso(d) === TODAY_ISO ? 'today' : ''} ${done ? 'done' : ''}">${DOW[d.getDay()]}<b>${kk || '·'}</b></div>`; }).join('');
+  const hk = k || nx.key, P = PLAN[hk];
+  const rec = recovery(); const gl = Math.min(rec.glutemax, rec.glutemed);
+  const recNote = k && gl < 70 ? `<p class="small"><b>Ягодицы восстановились на ${gl}%</b> — сегодня оставляй 2–3 повтора в запасе.</p>` : '';
+  const hero = `
+    <section class="hero d${hk}" aria-label="${k ? 'Тренировка сегодня' : 'День отдыха'}"><span class="letter" aria-hidden="true">${hk}</span>
+      <span class="eyebrow">${k ? 'Сегодня · тренировка ' + k : 'Сегодня ' + DOWL[TODAY.getDay()] + ' · отдых'}</span>
+      <h1>${k ? P.title : (nx.inDays === 1 ? 'Завтра' : DOWL[nx.date.getDay()][0].toUpperCase() + DOWL[nx.date.getDay()].slice(1)) + ' — ' + P.title.toLowerCase()}</h1>
+      <p>${k ? P.accent.split('. ')[0] + '.' : 'День восстановления. Можно сделать 12-минутный комплекс для таза из гида — он не мешает отдыху.'}</p>
+      <div class="meta"><span class="tag day">≈ ${sessionMinutes(hk).total} мин</span><span class="tag day">${P.main.length} упражнений</span>${doneToday ? '<span class="tag good">сегодня сделано</span>' : ''}</div>
+      ${recNote}
+      <div class="row wrap">${k ? `<button class="btn day" data-act="start" data-k="${k}">${doneToday ? 'Ещё раз' : 'Начать тренировку'}</button><button class="btn line sm" data-act="gotoplan" data-k="${k}">План дня</button>`
+        : `<button class="btn day" data-act="restflow">Комплекс 12 минут</button><button class="btn line sm" data-act="start" data-k="${nx.key}">Начать ${nx.key} сейчас</button>`}</div>
     </section>`;
-  const eat = hd.protein || 0; const pct = Math.min(100, Math.round(eat / pr.g * 100));
+  const eat = hd.protein || 0; const pfrac = Math.min(1, eat / pr.g);
   const lastLog = S.logs[S.logs.length - 1];
+  const month = S.logs.filter(l => l.end > Date.now() - 30 * 864e5).flatMap(l => (l.prs || []).map(p => ({...p, date: l.date})));
   const resume = SES ? `<button class="note" data-act="resume" style="border:0;text-align:left"><b>Тренировка ${SES.k} не завершена.</b> Нажми, чтобы продолжить.</button>` : '';
   return `<div class="screen">
-    <div class="week" aria-label="Неделя">${week}</div>
+    <p class="greet">${greeting()}</p>
     ${resume}${hero}
-    <section class="card" aria-label="Белок">
-      <div class="row between"><h2>Белок сегодня</h2><span class="src"><span class="dot"></span>Yazio → Apple Health</span></div>
-      <div class="row between"><div><span class="num" style="font-family:var(--f-display);font-size:28px;font-weight:600">${eat}</span><span class="muted"> / ${pr.g} г</span></div>
-        <span class="tag ${pct >= 90 ? 'good' : 'warn'}">${pct >= 90 ? 'норма закрыта' : 'осталось ' + Math.max(0, pr.g - eat) + ' г'}</span></div>
-      <div class="bar"><i style="width:${pct}%"></i></div>
-      <p class="small muted">${k ? 'Тренировочный день (' + (PLAN[k].load === 'heavy' ? 'тяжёлый' : 'средний') + ')' : 'День отдыха'}: ${pr.f.toString().replace('.', ',')} г на кг веса × ${fmtKg(curWeight())} кг. ${pr.post ? 'Из них ' + pr.post + '.' : 'Раздели на 3–4 приёма по ~' + pr.perMeal + ' г.'}</p>
-    </section>
+    <section class="card"><div class="ringrow">
+      <div class="ring">${ringSVG(['A','B','C'].map(x => ({frac: ws.done.has(x) ? 1 : 0, color: 'var(--d' + x + ')'})))}<div class="c"><div><b>${ws.done.size}/3</b><span>на неделе</span></div></div></div>
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0"><div class="weekdays">${week}</div>
+        <p class="small">${ws.streak ? `<b>Серия: ${ws.streak} ${plural(ws.streak, 'неделя', 'недели', 'недель')}</b> по 3 тренировки` : 'Сделай 3 тренировки за неделю — начнётся серия.'}</p></div>
+    </div></section>
+    ${recoveryCard()}
+    <section class="card" aria-label="Белок"><div class="ringrow">
+      <div class="ring">${ringSVG([{frac: pfrac, color: 'var(--accent)'}])}<div class="c"><div><b>${eat}</b><span>из ${pr.g} г</span></div></div></div>
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0"><h2>Белок</h2>
+        <p class="small muted">${k ? (PLAN[k].load === 'heavy' ? 'Тяжёлый' : 'Тренировочный') + ' день' : 'День отдыха'} · ${pr.f.toString().replace('.', ',')} г/кг. ${pr.post ? 'После зала — 25–35 г.' : 'По ~' + pr.perMeal + ' г на приём.'}</p>
+        <span class="src"><span class="dot ${S.settings.lastSync === TODAY_ISO ? '' : 'off'}"></span>Yazio → Apple Health</span></div>
+    </div></section>
     <section class="grid2">
-      ${!Object.keys(S.health).length ? '<button class="stat" data-act="sync" style="grid-column:1/-1;border:1px dashed var(--line);text-align:left"><span>Данные Apple Health и Yazio ещё не подтянуты</span><b style="font-size:15px">Синхронизировать</b></button>' : ''}
-      <div class="stat"><span>Съедено, Yazio</span><b>${hd.eatKcal ?? '—'} ккал</b></div>
-      <div class="stat"><span>Активные, Apple Health</span><b>${hd.activeKcal ?? '—'} ккал</b></div>
-      <div class="stat"><span>Вес тела</span><b>${fmtKg(curWeight())} кг</b></div>
-      <div class="stat"><span>Белки · жиры · углеводы</span><b>${hd.protein ?? '—'}·${hd.fat ?? '—'}·${hd.carbs ?? '—'}</b></div>
+      ${!Object.keys(S.health).length ? '<button class="stat" data-act="sync" style="grid-column:1/-1;border:1px dashed var(--line)"><span>Apple Health и Yazio ещё не подтянуты</span><b style="font-size:20px">Синхронизировать</b></button>' : ''}
+      <div class="stat"><span>Съедено, Yazio</span><b>${hd.eatKcal ?? '—'}</b><span>ккал</span></div>
+      <div class="stat"><span>Активные, Apple Health</span><b>${hd.activeKcal ?? '—'}</b><span>ккал</span></div>
+      <div class="stat"><span>Вес тела</span><b>${fmtKg(curWeight())}</b><span>кг</span></div>
+      <div class="stat"><span>Б · Ж · У</span><b>${hd.protein ?? '—'}·${hd.fat ?? '—'}·${hd.carbs ?? '—'}</b><span>г</span></div>
     </section>
-    ${lastLog ? `<section class="card"><div class="row between"><h2>Последняя тренировка</h2><span class="tag hot">${lastLog.day}</span></div>
-      <div class="grid3"><div class="stat"><span>${fdate(lastLog.date)}</span><b>${Math.round((lastLog.end - lastLog.start) / 60000)} мин</b></div>
-      <div class="stat"><span>Тоннаж</span><b>${(tonnage(lastLog.sets) / 1000).toFixed(1).replace('.', ',')} т</b></div>
-      <div class="stat"><span>${esc(lastLog.src || 'оценка')}</span><b>${lastLog.kcal} ккал</b></div></div>
+    ${month.length ? `<section class="card"><div class="row between"><h2>Рекорды за месяц</h2><span class="tag pr">${month.length} PR</span></div>
+      <div class="prs">${month.slice(-3).reverse().map(p => `<div class="prrow"><span class="small">${esc(EX[p.id].name)}<br><span class="muted">${fdate(p.date)} · ${p.label}</span></span><b>${p.text}</b></div>`).join('')}</div>
+      <button class="btn line sm" data-act="gotorec">Все рекорды</button></section>` : ''}
+    ${lastLog ? `<section class="card d${lastLog.day}"><div class="row between"><h2>Последняя тренировка</h2><span class="tag day">${lastLog.day}</span></div>
+      <div class="grid3"><div class="stat"><span>${fdate(lastLog.date)}</span><b>${Math.round((lastLog.end - lastLog.start) / 60000)}</b><span>мин</span></div>
+      <div class="stat"><span>Тоннаж</span><b>${(tonnage(lastLog.sets) / 1000).toFixed(1).replace('.', ',')}</b><span>т</span></div>
+      <div class="stat"><span>${esc(lastLog.src || 'оценка')}</span><b>${lastLog.kcal}</b><span>ккал</span></div></div>
       <button class="btn line sm" data-act="log" data-id="${lastLog.id}">Подробнее</button></section>` : ''}
     <section class="card flat"><h2>Твои цели</h2>
-      ${GOALS.map(([g, h]) => `<div><b style="font-size:14px">${g}</b><p class="small muted">${h}</p></div>`).join('')}</section>
+      ${GOALS.map(([g, h]) => `<div><b style="font-size:14px;font-weight:600">${g}</b><p class="small muted">${h}</p></div>`).join('')}</section>
   </div>`;
 }
 
@@ -281,22 +359,22 @@ function vPlan() {
     const wtxt = ex.kind === 'w' || ex.kind === 'a' ? (sg.w == null ? '<small>подобрать</small>' : `<span class="nextw ${sg.dir}">${fmtKg(sg.w)}</span> <small>${unitOf(ex)}</small>`) : `<small>${unitOf(ex)}</small>`;
     return itemRow(id, `<b>${n} × ${lo}–${hi}</b>${wtxt}`, (note ? note + ' · ' : '') + ex.p.map(x => MUSCLES[x].split(/[ ,]/)[0].toLowerCase()).join(', '), opt?.alt ? `<span class="tag" style="margin-top:4px">замена: ${esc(EX[opt.alt].name)}</span>` : '');
   }).join('');
-  return `<div class="screen">
-    <div class="screen-h"><span class="eyebrow">Программа на неделю · 3 тренировки на всё тело</span><h1>План</h1></div>
-    <div class="seg" role="group" aria-label="Тренировка">${Object.keys(PLAN).map(x => `<button data-act="ptab" data-k="${x}" aria-pressed="${x === k}">${PLAN[x].day.slice(0, 2)} · ${x}</button>`).join('')}</div>
-    <section class="card">
-      <div class="row between"><span class="eyebrow">${p.day} · ${p.main.length} основных</span><span class="tag">≈ ${m.total} мин</span></div>
-      <h2 style="font-size:20px">Тренировка ${k} — ${p.title.toLowerCase()}</h2>
+  return `<div class="screen d${k}">
+    <div class="screen-h"><span class="eyebrow">3 тренировки на всё тело</span><h1>План</h1></div>
+    <div class="daytabs" role="group" aria-label="Тренировка">${Object.keys(PLAN).map(x => `<button class="daytab d${x}" data-act="ptab" data-k="${x}" aria-pressed="${x === k}"><b>${x}</b><span>${PLAN[x].day}</span></button>`).join('')}</div>
+    <section class="hero d${k}"><span class="letter" aria-hidden="true">${k}</span>
+      <span class="eyebrow">${p.day} · ${p.main.length} основных · ≈ ${m.total} мин</span>
+      <h1>${p.title}</h1>
       <div class="note"><b>Акцент дня.</b> ${p.accent}</div>
-      <button class="btn block" data-act="start" data-k="${k}">Начать тренировку ${k}</button>
+      <button class="btn day block" data-act="start" data-k="${k}">Начать тренировку ${k}</button>
     </section>
-    <div class="block-h"><h2>1. Разминка</h2><span class="small muted">≈ 15 мин · каждую тренировку</span></div>
+    <div class="block-h"><h2><em>1</em>Разминка</h2><span class="small muted">≈ 15 мин</span></div>
     <div class="list">${WARM.map(w => itemRow(w.id, `<b>${w.dose}</b>`, '')).join('')}</div>
-    <div class="block-h"><h2>2. Активация ягодиц</h2><span class="small muted">≈ 4 мин</span></div>
+    <div class="block-h"><h2><em>2</em>Активация</h2><span class="small muted">≈ 4 мин</span></div>
     <div class="list">${p.act.map(a => itemRow(a.ex, `<b>${a.sets} × </b><small>${a.reps}</small>`, MUSCLES[EX[a.ex].p[0]])).join('')}</div>
-    <div class="block-h"><h2>3. Основная часть</h2><span class="small muted">справа — вес на следующий раз</span></div>
+    <div class="block-h"><h2><em>3</em>Основная часть</h2><span class="small muted">справа — вес на следующий раз</span></div>
     <div class="list">${main}</div>
-    <div class="block-h"><h2>4. Мобильность таза</h2><span class="small muted">из гида · ≈ 8 мин</span></div>
+    <div class="block-h"><h2><em>4</em>Мобильность таза</h2><span class="small muted">≈ 8 мин</span></div>
     <div class="list">${p.mob.map(id => itemRow(id, `<small>${esc(PDFMAP[id].reps || '')}</small>`, esc(PDFMAP[id].sectionTitle))).join('')}</div>
     <section class="card"><h2>Как прогрессировать</h2><ul class="clean">${p.progress.map(x => `<li>${x}</li>`).join('')}</ul>
       <p class="small muted">Общее правило: работай с запасом 1–2 повтора. Каждые 6–8 недель — лёгкая неделя: те же веса, вдвое меньше подходов.</p></section>
@@ -332,10 +410,23 @@ function vLib() {
 }
 
 // ---------- Журнал ----------
+function recordsList() {
+  const ids = []; Object.values(PLAN).forEach(p => p.main.forEach(m => { if (!ids.includes(m[0])) ids.push(m[0]); }));
+  const rows = ids.map(id => { const ex = EX[id]; const h = history(id); if (!h.length) return '';
+    let best = null, bestDate = '', bestE = 0;
+    h.forEach(x => x.sets.forEach(s => { const better = ex.kind === 'a' ? (!best || s.w < best.w || (s.w === best.w && s.r > best.r)) : ex.kind === 'w' ? (!best || s.w > best.w || (s.w === best.w && s.r > best.r)) : (!best || s.r > best.r);
+      if (better) { best = s; bestDate = x.date; } bestE = Math.max(bestE, e1rm(s.w, s.r)); }));
+    const nPR = S.logs.reduce((a, l) => a + (l.prs || []).filter(p => p.id === id).length, 0);
+    const val = ex.kind === 'w' || ex.kind === 'a' ? `${fmtKg(best.w)} × ${best.r}` : best.r + (ex.kind === 't' ? ' сек' : ' повт.');
+    return `<button class="item" data-act="ex" data-id="${id}">${thumb(id)}<div><div class="t">${esc(ex.name)}</div><div class="s">${fdate(bestDate)}${ex.kind === 'w' ? ' · 1ПМ ≈ ' + fmtKg(r1(bestE)) + ' кг' : ''}${nPR ? ' · ' + nPR + ' PR' : ''}</div></div><div class="r"><b class="serif" style="font-size:20px">${val}</b><small>${unitOf(ex)}</small></div></button>`;
+  }).join('');
+  return rows ? `<div class="list">${rows}</div>` : '<section class="card flat"><h2>Рекордов пока нет</h2><p class="small muted">Они появятся после первых тренировок — и каждый новый отметим.</p></section>';
+}
 function vJournal() {
-  const seg = `<div class="seg" role="group" aria-label="Раздел журнала">${[['progress','Прогресс'],['weight','Вес тела'],['body','Замеры'],['logs','Тренировки']].map(([k, l]) => `<button data-act="jtab" data-k="${k}" aria-pressed="${JTAB === k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="chips" role="group" aria-label="Раздел журнала">${[['progress','Прогресс'],['records','Рекорды'],['weight','Вес тела'],['body','Замеры'],['logs','История']].map(([k, l]) => `<button class="chip" data-act="jtab" data-k="${k}" aria-pressed="${JTAB === k}">${l}</button>`).join('')}</div>`;
   let body = '';
-  if (JTAB === 'weight') {
+  if (JTAB === 'records') body = recordsList();
+  else if (JTAB === 'weight') {
     const pts = S.body.map(b => ({x: b.date, y: b.weight}));
     const first = S.body[0], last = S.body[S.body.length - 1];
     body = `<section class="card"><div class="row between"><h2>Вес тела</h2><span class="src"><span class="dot"></span>Apple Health</span></div>
@@ -351,7 +442,7 @@ function vJournal() {
       ${ms.slice().reverse().map(b => `<tr><td>${fdate(b.date)}</td><td>${fmtKg(b.waist)}</td><td>${fmtKg(b.hips)}</td><td>${fmtKg(b.thigh)}</td></tr>`).join('')}</tbody></table></div></section>
       <form class="card" id="fm"><h2>Новый замер, см</h2><div class="grid3"><label class="f">Талия<input class="inp" type="number" step="0.1" id="fm-w" inputmode="decimal"></label><label class="f">Ягодицы<input class="inp" type="number" step="0.1" id="fm-h" inputmode="decimal"></label><label class="f">Бедро<input class="inp" type="number" step="0.1" id="fm-t" inputmode="decimal"></label></div><button class="btn">Сохранить</button></form>`;
   } else if (JTAB === 'logs') {
-    body = `<div class="list">${S.logs.slice().reverse().map(l => `<button class="item" data-act="log" data-id="${l.id}"><div class="thumb" style="font-family:var(--f-display);font-weight:700;font-size:18px;color:var(--accent);background:var(--accent-soft)">${l.day}</div><div><div class="t">${fdate(l.date)} · ${PLAN[l.day].short}</div><div class="s">${Math.round((l.end - l.start) / 60000)} мин · ${l.kcal} ккал · ${esc(l.src || 'forma')}</div></div><div class="r"><b>${(tonnage(l.sets) / 1000).toFixed(1).replace('.', ',')} т</b><small>тоннаж</small></div></button>`).join('') || '<p class="item" style="display:block">Тренировок пока нет.</p>'}</div>`;
+    body = `<div class="list">${S.logs.slice().reverse().map(l => `<button class="item d${l.day}" data-act="log" data-id="${l.id}"><div class="thumb letter">${l.day}</div><div><div class="t">${fdate(l.date)} · ${PLAN[l.day].short}${(l.prs || []).length ? ' <span class="tag pr">' + l.prs.length + ' PR</span>' : ''}</div><div class="s">${Math.round((l.end - l.start) / 60000)} мин · ${l.kcal} ккал · ${esc(l.src || 'forma')}</div></div><div class="r"><b>${(tonnage(l.sets) / 1000).toFixed(1).replace('.', ',')} т</b><small>тоннаж</small></div></button>`).join('') || '<p class="item" style="display:block">Тренировок пока нет.</p>'}</div>`;
   } else {
     const key = ['hip_thrust','leg_press','rdl','lat_pulldown'];
     body = key.map(id => {
@@ -526,23 +617,36 @@ function logSheet(id) {
 }
 
 // ---------- тренировка (сессия) ----------
-let SES = null, TIMER = null;
+let SES = null, TIMER = null, WAKE = null, AC = null, BEEPS = [];
+const HEAVY = ['hip_thrust','leg_press','rdl','lat_pulldown','chest_press','seated_row','bulgarian'];
+function warmupSets(id, w) {
+  const ex = EX[id]; w = +w; if (!HEAVY.includes(id) || !w || ex.kind !== 'w') return [];
+  const st = ex.step, sch = w >= st * 6 ? [[0.5, 10], [0.7, 5], [0.85, 2]] : [[0.5, 8], [0.75, 4]];
+  const out = []; sch.forEach(([p, r]) => { const x = Math.max(st, roundStep(w * p, st)); if (x < w && !out.some(o => o.w === x)) out.push({w: x, r}); });
+  return out;
+}
+async function wake(on) {
+  try { if (on && 'wakeLock' in navigator && !WAKE) { WAKE = await navigator.wakeLock.request('screen'); WAKE.addEventListener('release', () => WAKE = null); } else if (!on && WAKE) { await WAKE.release(); WAKE = null; } } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && SES && $('#sheet .timer')) wake(true); });
 function startSession(k) {
   const p = PLAN[k];
-  SES = {k, start: Date.now(), warm: {}, act: {}, mob: {}, swap: {}, sets: {}};
+  SES = {k, start: Date.now(), warm: {}, act: {}, mob: {}, swap: {}, sets: {}, wu: {}};
   p.main.forEach(([id, n, lo, hi]) => { const sg = suggest(id, k); SES.sets[id] = [...Array(n)].map(() => ({w: sg.w ?? '', r: '', done: false})); });
-  saveSes(); renderSession();
+  saveSes(); wake(true); renderSession();
 }
 function renderSession() {
-  const k = SES.k, p = PLAN[k]; const el = Math.round((Date.now() - SES.start) / 60000);
+  const k = SES.k, p = PLAN[k]; const el = Math.round((Date.now() - SES.start) / 60000); SES.wu = SES.wu || {};
   const mainHtml = p.main.map(([id0, n, lo, hi, note, opt]) => {
     const id = SES.swap[id0] || id0; const e = EX[id]; const sg = suggest(id, k);
     if (!SES.sets[id]) SES.sets[id] = [...Array(n)].map(() => ({w: sg.w ?? '', r: '', done: false}));
     const showW = e.kind === 'w' || e.kind === 'a';
+    const wu = warmupSets(id, SES.sets[id][0].w);
     return `<section class="card" data-ex="${id}">
-      <div class="row between" style="align-items:flex-start"><button class="item" style="padding:0;grid-template-columns:44px 1fr" data-act="ex" data-id="${id}">${thumb(id)}<div><div class="t">${esc(e.name)}</div><div class="s">${n} × ${lo}–${hi} ${note || ''}</div></div></button>
+      <div class="row between" style="align-items:flex-start"><button class="item" style="padding:0;grid-template-columns:46px 1fr" data-act="ex" data-id="${id}">${thumb(id)}<div><div class="t">${esc(e.name)}</div><div class="s">${n} × ${lo}–${hi} ${note || ''}</div></div></button>
       ${opt?.alt ? `<button class="btn ghost sm" data-act="swap" data-id="${id0}">Заменить</button>` : ''}</div>
       <p class="small muted">${sg.w != null && showW ? 'Цель: ' + fmtKg(sg.w) + ' ' + unitOf(e) + ' × ' + sg.target + '. ' : ''}${sg.why}</p>
+      ${wu.length ? `<div class="warmups"><span>Разминочные:</span>${wu.map((x, i) => `<button data-act="wu" data-id="${id}" data-i="${i}" aria-pressed="${!!SES.wu[id + i]}">${fmtKg(x.w)} × ${x.r}</button>`).join('')}</div>` : ''}
       <div class="setrow small muted"><span class="n">#</span><span>${showW ? unitOf(e) : '—'}</span><span>${e.kind === 't' ? 'сек' : 'повторы'}</span><span></span></div>
       ${SES.sets[id].map((s, i) => `<div class="setrow"><span class="n">${i + 1}</span>
         <input class="inp" id="s-${id}-${i}-w" data-set="${id}|${i}|w" type="number" step="0.5" inputmode="decimal" value="${s.w}" ${showW ? '' : 'disabled placeholder="—"'} aria-label="Вес, подход ${i + 1}">
@@ -551,38 +655,60 @@ function renderSession() {
     </section>`;
   }).join('');
   const chk = (grp, id, dose) => `<label class="chk"><input type="checkbox" data-chk="${grp}|${id}" ${SES[grp][id] ? 'checked' : ''}><span>${esc(getItem(id).name)}</span><span class="small muted">${esc(dose)}</span></label>`;
-  openSheet(sheetTop(`Тренировка ${k}`, `<span class="tag">${el} мин</span>`) + `
-    <p class="small muted">${p.title}. Веса уже подставлены по прошлой тренировке — поправь, если сделала иначе.</p>
+  openSheet(sheetTop(`Тренировка <em>${k}</em>`, `<span class="tag day">${el} мин</span>`) + `
+    <p class="small muted">${p.title}. Веса подставлены по прошлой тренировке, экран не погаснет до конца.</p>
     <section class="card"><h3>Разминка</h3><div>${WARM.map(w => chk('warm', w.id, w.dose)).join('')}</div></section>
     <section class="card"><h3>Активация</h3><div>${p.act.map(a => chk('act', a.ex, a.sets + ' × ' + a.reps)).join('')}</div></section>
     ${mainHtml}
     <section class="card"><h3>Мобильность таза</h3><div>${p.mob.map(id => chk('mob', id, PDFMAP[id].reps || '')).join('')}</div></section>
-    <button class="btn block" data-act="finish">Завершить тренировку</button>
-    <div class="timer" id="timer" hidden><span>Отдых</span><b id="tleft">1:30</b><button class="btn sm" data-act="tstop">Пропустить</button></div>`, 'full');
+    <button class="btn day block" data-act="finish">Завершить тренировку</button>
+    <div class="timer" id="timer" hidden><span>Отдых</span><b id="tleft">1:30</b><button class="btn sm" data-act="tstop">Пропустить</button></div>`, 'full d' + k);
 }
+function stopBeeps() { BEEPS.forEach(o => { try { o.stop(); } catch (e) {} }); BEEPS = []; }
 function startTimer(sec) {
-  clearInterval(TIMER); const end = Date.now() + sec * 1000; const t = $('#timer'); if (!t) return; t.hidden = false;
-  const tick = () => { const left = Math.max(0, Math.round((end - Date.now()) / 1000)); const el = $('#tleft'); if (el) el.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0'); if (!left) { clearInterval(TIMER); if ($('#timer')) $('#timer').hidden = true; } };
+  clearInterval(TIMER); stopBeeps(); const end = Date.now() + sec * 1000; const t = $('#timer'); if (!t) return; t.hidden = false;
+  try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); AC.resume();
+    [0, 0.25, 0.5].forEach(dt => { const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = 880; g.gain.setValueAtTime(0.0001, AC.currentTime);
+      const at = AC.currentTime + sec + dt; g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.25, at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+      o.connect(g).connect(AC.destination); o.start(at); o.stop(at + 0.2); BEEPS.push(o); }); } catch (e) {}
+  const tick = () => { const left = Math.max(0, Math.round((end - Date.now()) / 1000)); const el = $('#tleft'); if (el) el.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    if (!left) { clearInterval(TIMER); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); if ($('#timer')) $('#timer').hidden = true; } };
   tick(); TIMER = setInterval(tick, 1000);
 }
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const c = document.createElement('canvas'); c.id = 'confetti'; document.body.appendChild(c);
+  const dpr = devicePixelRatio || 1; c.width = innerWidth * dpr; c.height = innerHeight * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr);
+  const cs = getComputedStyle(document.documentElement); const cols = ['--dA', '--dB', '--dC', '--accent', '--warm'].map(v => cs.getPropertyValue(v).trim());
+  const P = [...Array(140)].map(() => ({x: innerWidth / 2, y: innerHeight * 0.35, vx: (Math.random() - .5) * 12, vy: -Math.random() * 12 - 4, r: Math.random() * 6 + 3, a: Math.random() * 6, c: cols[Math.floor(Math.random() * cols.length)]}));
+  const t0 = performance.now();
+  const step = t => { const dt = t - t0; x.clearRect(0, 0, innerWidth, innerHeight);
+    P.forEach(p => { p.vy += 0.35; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.a += 0.15; x.save(); x.translate(p.x, p.y); x.rotate(p.a); x.fillStyle = p.c; x.globalAlpha = Math.max(0, 1 - dt / 2200); x.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2); x.restore(); });
+    if (dt < 2200) requestAnimationFrame(step); else c.remove(); };
+  requestAnimationFrame(step);
+}
 function finishSession() {
-  clearInterval(TIMER);
+  clearInterval(TIMER); stopBeeps(); wake(false);
   const sets = {}; Object.entries(SES.sets).forEach(([id, arr]) => { const d = arr.filter(s => s.done).map(s => ({w: +s.w || 0, r: +s.r || 0, done: true})); if (d.length) sets[id] = d; });
   const end = Date.now(); const min = Math.max(1, Math.round((end - SES.start) / 60000));
   const kcal = Math.round(metKcal(6, curWeight(), Math.min(7, min)) + metKcal(5, curWeight(), Math.max(0, min - 15)) + metKcal(2.5, curWeight(), Math.min(8, min)));
   const log = {id: 'l' + end, date: iso(new Date(SES.start)), day: SES.k, start: SES.start, end, sets, kcal, avgHR: null, src: 'оценка forma'};
   const nDone = Object.values(sets).reduce((a, x) => a + x.length, 0);
-  if (nDone) { S.logs.push(log); save(); }
-  const pr = proteinFor(SES.k);
+  if (nDone) { log.prs = prsFor(log); S.logs.push(log); save(); }
+  const prs = log.prs || [];
+  const pr = proteinFor(SES.k); const k = SES.k;
   openSheet(sheetTop('Готово') + `
-    <div class="hero"><span class="eyebrow">Тренировка ${SES.k} · ${min} мин</span><h1>${nDone ? nDone + ' ' + plural(nDone, 'рабочий подход', 'рабочих подхода', 'рабочих подходов') : 'Подходы не отмечены'}</h1>
-      <p>${nDone ? 'Сохранено в журнал. Новые веса для следующей тренировки уже посчитаны.' : 'Отметь хотя бы один подход галочкой, чтобы тренировка попала в журнал.'}</p></div>
-    <div class="grid3"><div class="stat"><span>Тоннаж</span><b>${tonnage(sets)} кг</b></div><div class="stat"><span>Ккал, оценка</span><b>${kcal}</b></div><div class="stat"><span>Белок сегодня</span><b>${pr.g} г</b></div></div>
+    <section class="hero d${k}"><span class="letter" aria-hidden="true">${k}</span><span class="eyebrow">Тренировка ${k} · ${min} мин</span><h1>${nDone ? nDone + ' ' + plural(nDone, 'рабочий подход', 'рабочих подхода', 'рабочих подходов') : 'Подходы не отмечены'}</h1>
+      <p>${nDone ? 'Сохранено в журнал. Веса на следующий раз уже посчитаны.' : 'Отметь хотя бы один подход галочкой, чтобы тренировка попала в журнал.'}</p></section>
+    ${prs.length ? `<section class="card"><div class="row between"><h2>Новые рекорды</h2><span class="tag pr">${prs.length} PR</span></div><div class="prs">${prs.map(p => `<div class="prrow"><span class="small">${esc(EX[p.id].name)}<br><span class="muted">${p.label}</span></span><b>${p.text}</b></div>`).join('')}</div></section>` : ''}
+    <div class="grid3"><div class="stat"><span>Тоннаж</span><b>${tonnage(sets)}</b><span>кг</span></div><div class="stat"><span>Ккал, оценка</span><b>${kcal}</b><span>ккал</span></div><div class="stat"><span>Белок</span><b>${pr.g}</b><span>г за день</span></div></div>
     <section class="note"><b>Питание:</b> в ближайшие 2 часа 25–35 г белка. Всего за день — ${pr.g} г (${pr.f.toString().replace('.', ',')} г/кг).</section>
     <section class="card"><div class="row between"><h3>Пульс и калории из Apple Watch</h3><span class="src"><span class="dot off"></span>не подтянуто</span></div>
       <p class="small muted">Быстрая команда «forma sync» заберёт из Apple Health активные калории и пульс за время этой тренировки.</p>
       <button class="btn line sm" data-act="sync">Синхронизировать</button></section>
+    ${S.google && !gValid() && nDone ? '<button class="btn google block" data-act="gsync">' + GOOGLE_G + ' Сохранить копию в Google Диск</button>' : ''}
     <button class="btn block" data-act="close">Закрыть</button>`);
+  if (prs.length) confetti();
   SES = null; saveSes(); render();
 }
 
@@ -599,7 +725,7 @@ function restSheet() {
 const PHOTO_TOTAL = PDFX.reduce((a, p) => a + p.imgs.length, 0);
 function settingsSheet() {
   const P = S.profile; const nPh = Object.keys(PHOTOS).length;
-  openSheet(sheetTop('Настройки') + `
+  openSheet(sheetTop('Настройки') + googleCard() + `
     ${S.sample ? `<section class="note"><b>Сейчас показан пример данных</b> — это не твои цифры. <button class="btn sm" data-act="clear" style="margin-top:8px">Удалить пример и начать с нуля</button></section>` : ''}
     <form class="card" id="fp"><h3>Профиль</h3>
       <div class="grid2"><label class="f">Возраст<input class="inp" id="pf-a" type="number" value="${P.age}"></label><label class="f">Рост, см<input class="inp" id="pf-h" type="number" value="${P.height}"></label></div>
@@ -728,6 +854,7 @@ function onboarding() {
       <label class="f">Цель<select class="inp" id="ob-g"><option value="recomp">Рельеф, вес тот же</option><option value="cut">Похудеть</option><option value="bulk">Набрать мышцы</option></select></label>
       <button class="btn block">Начать</button>
       <p class="small muted">Пульс покоя можно взять в Apple Health. Всё меняется потом в настройках.</p></form>
+    <button class="btn google" data-act="glogin">${GOOGLE_G} Уже пользуюсь — войти через Google</button>
     <button class="btn ghost" data-act="demo">Сначала посмотреть на примере</button>`);
 }
 function finishOnboarding() {
@@ -748,6 +875,80 @@ function aboutHtml() {
 }
 
 
+// ---------- Google: вход и копия в Google Диске (скрытая папка приложения) ----------
+const GCLIENT = '771904817776-r7nllp6ci2vu27f5tjv32oh9troq93a3.apps.googleusercontent.com';
+const GSCOPE = 'https://www.googleapis.com/auth/drive.appdata openid email profile';
+let GTOK = null, GEXP = 0, GTC = null, SYNC_T = null, SYNCING = false, GTHEN = null;
+const gValid = () => !!GTOK && Date.now() < GEXP;
+function gSignIn(then) {
+  if (!(window.google && google.accounts && google.accounts.oauth2)) { toast('Google ещё загружается — попробуй через пару секунд'); return; }
+  GTHEN = then || null;
+  if (!GTC) GTC = google.accounts.oauth2.initTokenClient({client_id: GCLIENT, scope: GSCOPE,
+    callback: async r => {
+      if (r.error) { toast('Вход не удался. Попробуй ещё раз.'); return; }
+      GTOK = r.access_token; GEXP = Date.now() + (Number(r.expires_in || 3600) - 60) * 1000;
+      try { sessionStorage.setItem('forma.gtok', JSON.stringify([GTOK, GEXP])); } catch (e) {}
+      try { await gProfile(); } catch (e) {}
+      await driveSync(true); const t = GTHEN; GTHEN = null; if (t) t();
+    },
+    error_callback: e => toast(e && e.type === 'popup_closed' ? 'Окно входа закрыто' : 'Не получилось открыть окно Google. Разреши всплывающие окна.')});
+  GTC.requestAccessToken({prompt: S.google ? '' : 'consent', login_hint: S.google?.email || ''});
+}
+async function gFetch(url, opt = {}) {
+  const r = await fetch(url, {...opt, headers: {...(opt.headers || {}), Authorization: 'Bearer ' + GTOK}});
+  if (r.status === 401) { GTOK = null; throw new Error('auth'); }
+  if (!r.ok) throw new Error('http ' + r.status);
+  return r;
+}
+async function gProfile() { const j = await (await gFetch('https://www.googleapis.com/oauth2/v3/userinfo')).json(); S.google = Object.assign(S.google || {}, {email: j.email, name: j.given_name || j.name, picture: j.picture}); saveLocal(); }
+function mergeState(a, b) {
+  if (!b || !Array.isArray(b.logs)) return a;
+  if (a.sample && !b.sample) a = Object.assign(emptyState(), {onboarded: true});
+  if (b.sample && !a.sample) b = emptyState();
+  const logs = {}; [...(b.logs || []), ...(a.logs || [])].forEach(l => logs[l.id] = l);
+  const body = {}; [...(b.body || []), ...(a.body || [])].forEach(x => { const key = x.date + (x.waist ? 'm' : ''); body[key] = Object.assign(body[key] || {}, x); });
+  const health = {...(b.health || {})}; Object.entries(a.health || {}).forEach(([d, v]) => health[d] = Object.assign({}, health[d], v));
+  const newer = (a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b;
+  return {...newer, sample: !!(a.sample && b.sample), onboarded: !!(a.onboarded || b.onboarded), google: a.google || b.google,
+    logs: Object.values(logs).sort((x, y) => x.start - y.start), body: Object.values(body).sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0),
+    health, settings: {...(b.settings || {}), ...(a.settings || {})}};
+}
+async function driveSync(interactive) {
+  if (!gValid() || SYNCING) return; SYNCING = true;
+  try {
+    const q = encodeURIComponent("name='forma.json'");
+    const list = await (await gFetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id,modifiedTime)`)).json();
+    const f = list.files && list.files[0];
+    if (f) { const remote = await (await gFetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).json(); S = mergeState(S, remote); }
+    S.google = Object.assign(S.google || {}, {lastSync: Date.now(), pending: false});
+    const body = JSON.stringify(S);
+    if (f) await gFetch(`https://www.googleapis.com/upload/drive/v3/files/${f.id}?uploadType=media`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body});
+    else { const fd = new FormData(); fd.append('metadata', new Blob([JSON.stringify({name: 'forma.json', parents: ['appDataFolder']})], {type: 'application/json'})); fd.append('file', new Blob([body], {type: 'application/json'}));
+      await gFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {method: 'POST', body: fd}); }
+    saveLocal(); if (interactive) { if ($('#sheet') && !SES) closeSheet(); render(); toast('Сохранено в Google Диске'); }
+  } catch (e) {
+    if (S.google) S.google.pending = true; saveLocal();
+    if (interactive) toast(e.message === 'auth' ? 'Нужно войти в Google ещё раз' : 'Не получилось связаться с Google Диском');
+  }
+  SYNCING = false;
+}
+function gSignOut() {
+  try { if (GTOK) google.accounts.oauth2.revoke(GTOK, () => {}); } catch (e) {}
+  GTOK = null; GEXP = 0; try { sessionStorage.removeItem('forma.gtok'); } catch (e) {}
+  delete S.google; saveLocal(); closeSheet(); render(); toast('Ты вышла из Google. Данные остались на телефоне.');
+}
+function gRestore() { try { const [t, e] = JSON.parse(sessionStorage.getItem('forma.gtok')) || []; if (t && Date.now() < e) { GTOK = t; GEXP = e; } } catch (e) {} }
+function googleCard() {
+  if (S.google) {
+    const ls = S.google.lastSync ? new Date(S.google.lastSync) : null;
+    return `<section class="card"><div class="acct">${S.google.picture ? `<img src="${esc(S.google.picture)}" alt="" referrerpolicy="no-referrer">` : ''}<div style="min-width:0"><h3>${esc(S.google.name || 'Google')}</h3><p class="small muted">${esc(S.google.email || '')}</p></div></div>
+      <p class="small muted">Копия хранится в скрытой папке forma. на твоём Google Диске. ${ls ? 'Последнее сохранение: ' + fdate(iso(ls)) + ', ' + String(ls.getHours()).padStart(2, '0') + ':' + String(ls.getMinutes()).padStart(2, '0') + '.' : ''}</p>
+      <div class="row wrap"><button class="btn sm" data-act="gsync">Синхронизировать сейчас</button><button class="btn ghost sm" data-act="glogout">Выйти</button></div></section>`;
+  }
+  return `<section class="card"><h3>Вход через Google</h3><p class="small muted">Тренировки, веса и замеры будут сохраняться в скрытую папку forma. на твоём Google Диске. Новый телефон — вошла, и всё на месте.</p>
+    <button class="btn google block" data-act="glogin">${GOOGLE_G} Войти через Google</button></section>`;
+}
+
 // ================= events =================
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act],[data-tab]'); if (!b) return;
@@ -766,12 +967,12 @@ document.addEventListener('click', e => {
   else if (a === 'settings') settingsSheet();
   else if (a === 'done') { const s = SES.sets[b.dataset.id][+b.dataset.i]; s.done = !s.done; b.setAttribute('aria-pressed', s.done); saveSes();
     if (s.done) { if (!s.r) { const inp = $(`#s-${b.dataset.id}-${b.dataset.i}-r`); s.r = inp.placeholder; inp.value = s.r; } startTimer(['hip_thrust','leg_press','rdl','bulgarian'].includes(b.dataset.id) ? 120 : 90); } }
-  else if (a === 'tstop') { clearInterval(TIMER); $('#timer').hidden = true; }
+  else if (a === 'tstop') { clearInterval(TIMER); stopBeeps(); $('#timer').hidden = true; }
   else if (a === 'swap') { const id0 = b.dataset.id; const alt = PLAN[SES.k].main.find(m => m[0] === id0)[5].alt; SES.swap[id0] = SES.swap[id0] ? null : alt; saveSes(); renderSession(); }
   else if (a === 'finish') finishSession();
   else if (a === 'clear') { S = Object.assign(emptyState(), {profile: S.profile, onboarded: true}); save(); closeSheet(); render(); toast('Примеры удалены'); }
   else if (a === 'demo') { S = seed(); save(); closeSheet(); render(); toast('Загружен пример данных'); }
-  else if (a === 'resume') renderSession();
+  else if (a === 'resume') { wake(true); renderSession(); }
   else if (a === 'sync') syncSheet();
   else if (a === 'runshortcut') runShortcut();
   else if (a === 'paste') pasteSync();
@@ -780,11 +981,18 @@ document.addEventListener('click', e => {
   else if (a === 'photos') loadPhotos();
   else if (a === 'photosdel') { clearPhotos().then(() => { render(); settingsSheet(); toast('Фото удалены с устройства'); }); }
   else if (a === 'onbdone') finishOnboarding();
+  else if (a === 'gotorec') { TAB = 'journal'; JTAB = 'records'; render(); window.scrollTo(0, 0); }
+  else if (a === 'wu') { const key = b.dataset.id + b.dataset.i; SES.wu[key] = !SES.wu[key]; b.setAttribute('aria-pressed', !!SES.wu[key]); saveSes(); }
+  else if (a === 'glogin') gSignIn(() => { if (!S.onboarded && (S.logs.length || S.body.length)) { S.onboarded = true; saveLocal(); } closeSheet(); render(); });
+  else if (a === 'gsync') { if (gValid()) driveSync(true); else gSignIn(); }
+  else if (a === 'glogout') gSignOut();
 });
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'libq') { LIBQ = t.value; const pos = t.selectionStart; render(); const n = $('#libq'); n.focus(); n.setSelectionRange(pos, pos); }
-  else if (t.dataset.set && SES) { const [id, i, f] = t.dataset.set.split('|'); SES.sets[id][+i][f] = t.value; saveSes(); }
+  else if (t.dataset.set && SES) { const [id, i, f] = t.dataset.set.split('|'); const arr = SES.sets[id]; const old = arr[+i][f]; arr[+i][f] = t.value;
+    if (f === 'w') arr.forEach((x, j) => { if (j > +i && !x.done && String(x.w) === String(old)) { x.w = t.value; const el = $(`#s-${id}-${j}-w`); if (el) el.value = t.value; } });
+    saveSes(); }
   else if (t.dataset.chk && SES) { const [g, id] = t.dataset.chk.split('|'); SES[g][id] = t.checked; saveSes(); }
   else if (TAB === 'calc' && t.closest('.acc')) calcAll();
 });
@@ -799,7 +1007,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (SES &&
 document.addEventListener('change', e => { if (e.target.id === 'restore') restoreBackup(e.target.files[0]); });
 
 document.addEventListener('submit', e => { if (e.target.id === 'fo') { e.preventDefault(); finishOnboarding(); } });
-load(); loadSes();
+load(); loadSes(); gRestore();
 $('#aside').innerHTML = `<div class="aside-stack"><div class="card">${aboutHtml()}</div></div>`;
 if (location.hash.startsWith('#sync=')) {
   try { const b = location.hash.slice(6).replace(/-/g, '+').replace(/_/g, '/'); const txt = decodeURIComponent(escape(atob(b))); setTimeout(() => toast(mergeSync(txt)), 300); } catch (e) {}
