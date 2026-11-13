@@ -271,7 +271,7 @@ function recovery(now = Date.now()) {
     const load = {};
     Object.entries(l.sets).forEach(([id, arr]) => { const e = EX[id]; if (!e) return; const n = arr.length;
       e.p.forEach(m => load[m] = (load[m] || 0) + n); e.s.forEach(m => load[m] = (load[m] || 0) + n * 0.5); });
-    Object.entries(load).forEach(([m, L]) => { const T = (BIG.includes(m) ? 72 : 48) * Math.min(1.2, Math.max(0.5, L / 4)); const f = Math.max(0, 1 - h / T); if (f > (fat[m] || 0)) fat[m] = f; });
+    Object.entries(load).forEach(([m, L]) => { const T = (BIG.includes(m) ? 48 : 36) * Math.min(1.3, Math.max(0.6, L / 6)); const f = Math.max(0, 1 - h / T); if (f > (fat[m] || 0)) fat[m] = f; });
   });
   const out = {}; Object.keys(MUSCLES).forEach(m => out[m] = Math.round(100 * (1 - (fat[m] || 0)))); return out;
 }
@@ -799,7 +799,8 @@ function warmupSets(id, w) {
 async function wake(on) {
   try { if (on && 'wakeLock' in navigator && !WAKE) { WAKE = await navigator.wakeLock.request('screen'); WAKE.addEventListener('release', () => WAKE = null); } else if (!on && WAKE) { await WAKE.release(); WAKE = null; } } catch (e) {}
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && SES && $('#sheet .timer')) wake(true); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (SES && $('#sheet .timer')) wake(true); else if (!$('#sheet') && TAB === 'today') render(); });
+setInterval(() => { if (document.visibilityState === 'visible' && !$('#sheet') && TAB === 'today') render(); }, 15 * 60000);
 function startSession(k, opt = {}) {
   const p = PLAN[k]; const edit = opt.editId ? S.logs.find(l => l.id === opt.editId) : null;
   SES = {k, start: Date.now(), warm: {}, act: {}, mob: {}, swap: {}, sets: {}, wu: {}, bw: {}, date: opt.date || (edit && edit.date) || null, editId: edit ? edit.id : null};
