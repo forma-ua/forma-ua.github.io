@@ -103,7 +103,7 @@ function getItem(id) {
 function e1rm(w, r) { if (!w || !r) return 0; return r <= 10 ? (w * (1 + r / 30) + w * 36 / (37 - r)) / 2 : w * (1 + r / 30); }
 function exHistory(exId) {
   const out = [];
-  S.logs.forEach(l => { const s = l.sets[exId]; if (s && s.length) out.push({date: l.date, day: l.day, end: l.end, sets: s, rpe: l.rpe && l.rpe[exId]}); });
+  S.logs.forEach(l => { if (l.open && SES && l.id === SES.logId) return; const s = l.sets[exId]; if (s && s.length) out.push({date: l.date, day: l.day, end: l.end, sets: s, rpe: l.rpe && l.rpe[exId]}); });
   return out.sort((a, b) => a.date < b.date ? -1 : 1);
 }
 function topSet(sets) { return sets.reduce((b, s) => (e1rm(s.w, s.r) > e1rm(b.w, b.r) ? s : b), sets[0]); }
@@ -343,7 +343,7 @@ function vToday() {
   const eat = hd.protein || 0; const pfrac = Math.min(1, eat / pr.g);
   const lastLog = S.logs[S.logs.length - 1];
   const month = S.logs.filter(l => l.end > Date.now() - 30 * 864e5).flatMap(l => (l.prs || []).map(p => ({...p, date: l.date})));
-  const resume = SES ? `<button class="note" data-act="resume" style="border:0;text-align:left"><b>Тренировка ${SES.k} не завершена.</b> Нажми, чтобы продолжить.</button>` : '';
+  const resume = SES ? `<button class="note" data-act="resume" style="border:0;text-align:left"><b>Тренировка ${SES.k} идёт.</b> Отмеченные подходы уже сохранены в журнал. Нажми, чтобы продолжить.</button>` : '';
   return `<div class="screen">
     <p class="greet">${greeting()}</p>
     ${resume}${profileCard()}${!S.logs.length && !Object.keys(S.weights || {}).length && !S.sample ? '<section class="card"><div class="row between"><h2>Рабочие веса</h2><span class="tag hot">2 минуты</span></div><p class="small muted">Впиши, с какими весами работаешь сейчас, — forma. подставит их в тренировки и будет подсказывать прибавку.</p><button class="btn block" data-act="weights">Указать веса</button></section>' : ''}${hero}${backupReminder()}
@@ -800,6 +800,7 @@ function logSheet(id) {
     <p class="small muted">Пульс и калории — ${esc(l.src || 'оценка forma')}. ${nSets(l.sets)} рабочих подходов.</p>
     <div class="list">${Object.entries(l.sets).map(([eid, sets]) => { const e = EX[eid]; return `<div class="item" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t">${esc(e.name)}</div></div><div class="r">${sets.map(s => (WEIGHTED(e.kind) && s.w ? fmtKg(s.w) + '×' : '') + s.r).join(' · ')}</div></div>`; }).join('')}</div>
     ${l.note ? `<section class="note"><b>Заметка.</b> ${esc(l.note)}</section>` : ''}${l.rpe ? `<p class="small muted">Ощущения: ${Object.entries(l.rpe).map(([id, v]) => esc(EX[id] ? EX[id].name : id) + ' — ' + ['', 'легко', 'норм', 'тяжело'][v]).join('; ')}.</p>` : ''}${l.light ? '<p class="small muted">Облегчённый вариант: самочувствие было так себе.</p>' : ''}
+    ${l.open && SES && SES.logId === l.id ? '<section class="note"><b>Тренировка ещё идёт.</b> Подходы сохраняются по ходу. <button class="btn sm" data-act="resume" style="margin-top:8px">Продолжить</button></section>' : ''}${l.auto ? '<p class="small muted">Сохранено автоматически — тренировку не завершили вручную.</p>' : ''}
     <div class="row wrap"><button class="btn sm" data-act="editlog" data-id="${l.id}">Изменить веса и повторы</button><button class="btn ghost sm" data-act="dellog" data-id="${l.id}">Удалить</button></div>`);
 }
 
@@ -884,17 +885,18 @@ function warmupSets(id, w) {
 async function wake(on) {
   try { if (on && 'wakeLock' in navigator && !WAKE) { WAKE = await navigator.wakeLock.request('screen'); WAKE.addEventListener('release', () => WAKE = null); } else if (!on && WAKE) { await WAKE.release(); WAKE = null; } } catch (e) {}
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (SES && $('#sheet .timer')) wake(true); else if (!$('#sheet') && TAB === 'today') render(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (autoCloseSession()) { closeSheet(); render(); return; } if (SES && $('#sheet .timer')) wake(true); else if (!$('#sheet') && TAB === 'today') render(); });
 setInterval(() => { if (document.visibilityState === 'visible' && !$('#sheet') && TAB === 'today') render(); }, 15 * 60000);
 function startSession(k, opt = {}) {
   const p = PLAN[k]; const edit = opt.editId ? S.logs.find(l => l.id === opt.editId) : null;
-  SES = {k, start: Date.now(), warm: {}, act: {}, mob: {}, swap: {}, sets: {}, wu: {}, bw: {}, rpe: edit && edit.rpe ? {...edit.rpe} : {}, note: edit ? edit.note || '' : '', date: opt.date || (edit && edit.date) || null, editId: edit ? edit.id : null};
+  SES = {k, start: Date.now(), last: Date.now(), warm: {}, act: {}, mob: {}, swap: {}, sets: {}, wu: {}, bw: {}, rpe: edit && edit.rpe ? {...edit.rpe} : {}, note: edit ? edit.note || '' : '', date: opt.date || (edit && edit.date) || null, editId: edit ? edit.id : null};
   p.main.forEach(([id, n, lo, hi, note, o]) => {
     const useId = edit && !edit.sets[id] && o?.alt && edit.sets[o.alt] ? o.alt : id; if (useId !== id) SES.swap[id] = useId;
     const sg = suggest(useId, k); const old = edit && edit.sets[useId];
     SES.bw[useId] = old ? old.every(x => !x.w) && EX[useId].kind !== 'band' && EX[useId].kind !== 't' : !!sg.bw;
     SES.sets[useId] = [...Array(Math.max(n, old ? old.length : 0))].map((_, i) => old && old[i] ? {w: old[i].w || '', r: old[i].r, done: true} : {w: sg.bw ? '' : (sg.w ?? ''), r: '', done: false});
   });
+  if (!SES.date && !SES.editId) SES.logId = 'l' + SES.start;
   saveSes(); if (!SES.date) wake(true); renderSession();
 }
 function renderSession() {
@@ -1057,21 +1059,27 @@ function confetti() {
     if (dt < 2200) requestAnimationFrame(step); else c.remove(); };
   requestAnimationFrame(step);
 }
-function finishSession() {
-  clearInterval(TIMER); stopBeeps(); wake(false);
+function buildLog(endAt) {
   const sets = {}; Object.entries(SES.sets).forEach(([id, arr]) => { const bw = SES.bw && SES.bw[id]; const d = arr.filter(s => s.done).map(s => ({w: bw ? 0 : (+String(s.w).replace(',', '.') || 0), r: +s.r || 0, done: true})); if (d.length) sets[id] = d; });
   const old = SES.editId ? S.logs.find(l => l.id === SES.editId) : null;
-  let start = SES.start, end = Date.now();
+  let start = SES.start, end = endAt || Date.now();
   if (old) { start = old.start; end = old.end; } else if (SES.date) { const d0 = parseISO(SES.date); d0.setHours(18, 30); start = +d0; end = start + 80 * 60000; }
   const min = Math.max(1, Math.round((end - start) / 60000));
   const kcal = old ? old.kcal : Math.round(metKcal(6, curWeight(), Math.min(7, min)) + metKcal(5, curWeight(), Math.max(0, min - 15)) + metKcal(2.5, curWeight(), Math.min(8, min)));
-  const log = {id: old ? old.id : 'l' + end, date: SES.date || iso(new Date(start)), day: SES.k, start, end, sets, kcal, avgHR: old ? old.avgHR : null, src: old ? old.src : (SES.date ? 'внесено вручную' : 'оценка forma')};
+  const log = {id: old ? old.id : (SES.logId || 'l' + end), date: SES.date || iso(new Date(start)), day: SES.k, start, end, sets, kcal, avgHR: old ? old.avgHR : null, src: old ? old.src : (SES.date ? 'внесено вручную' : 'оценка forma')};
   const rpe = {}; Object.entries(SES.rpe || {}).forEach(([id, v]) => { if (sets[id] && v) rpe[id] = v; }); if (Object.keys(rpe).length) log.rpe = rpe; else if (old && old.rpe) log.rpe = old.rpe;
   const note = (SES.note || '').trim(); if (note) log.note = note; else if (old && old.note && SES.note == null) log.note = old.note;
   if (SES.ready) log.ready = SES.ready; if (SES.light) log.light = true;
   const nDone = Object.values(sets).reduce((a, x) => a + x.length, 0);
+  return {log, sets, old, min, kcal, nDone};
+}
+function finishSession() {
+  clearInterval(TIMER); stopBeeps(); wake(false); clearTimeout(AUTOSAVE_T);
+  const {log, sets, old, min, kcal, nDone} = buildLog();
   if (old && nDone) S.logs = S.logs.filter(l => l.id !== old.id);
-  if (nDone) { log.prs = prsFor(log); S.logs.push(log); S.logs.sort((a, b) => a.start - b.start); save(); }
+  if (!old) S.logs = S.logs.filter(l => l.id !== log.id);
+  if (nDone) { log.prs = prsFor(log); S.logs.push(log); S.logs.sort((a, b) => a.start - b.start); }
+  save();
   if (SES.date) { const wasEdit = !!old; SES = null; saveSes(); closeSheet(); render(); toast(nDone ? (wasEdit ? 'Тренировка обновлена' : 'Тренировка за ' + fdate(log.date) + ' сохранена') : 'Подходы не отмечены — ничего не сохранено'); return; }
   const prs = log.prs || [];
   const pr = proteinFor(SES.k); const k = SES.k;
@@ -1266,8 +1274,36 @@ async function clearPhotos() {
 }
 
 // незавершённая тренировка переживает закрытие приложения
-function saveSes() { try { if (SES) localStorage.setItem('forma.ses', JSON.stringify(SES)); else localStorage.removeItem('forma.ses'); } catch (e) {} }
-function loadSes() { try { const j = JSON.parse(localStorage.getItem('forma.ses')); if (j && Date.now() - j.start < 6 * 3600e3) SES = j; } catch (e) {} }
+let AUTOSAVE_T = null;
+function saveSes() {
+  if (SES) SES.last = Date.now();
+  try { if (SES) localStorage.setItem('forma.ses', JSON.stringify(SES)); else localStorage.removeItem('forma.ses'); } catch (e) {}
+  if (SES && SES.logId) { clearTimeout(AUTOSAVE_T); AUTOSAVE_T = setTimeout(autosaveDraft, 800); }
+}
+// незавершённая тренировка сразу лежит в журнале как черновик — ничего не теряется
+function autosaveDraft() {
+  if (!SES || !SES.logId) return;
+  const {log, nDone} = buildLog(SES.last);
+  S.logs = S.logs.filter(l => l.id !== log.id);
+  if (nDone) { log.open = true; S.logs.push(log); S.logs.sort((a, b) => a.start - b.start); }
+  save();
+}
+// если тренировку не завершили, через 3 часа без действий она сохранится сама
+function autoCloseSession() {
+  if (!SES) return false;
+  const idle = Date.now() - (SES.last || SES.start);
+  if (SES.logId && idle > 3 * 3600e3) {
+    const {log, nDone} = buildLog(SES.last || SES.start);
+    S.logs = S.logs.filter(l => l.id !== log.id);
+    if (nDone) { log.prs = prsFor(log); log.auto = true; S.logs.push(log); S.logs.sort((a, b) => a.start - b.start); }
+    save(); const k = SES.k; SES = null; saveSes();
+    if (nDone) setTimeout(() => toast('Тренировка ' + k + ' сохранена в журнал — её не завершили вручную'), 600);
+    return true;
+  }
+  if (!SES.logId && idle > 48 * 3600e3) { SES = null; saveSes(); }
+  return false;
+}
+function loadSes() { try { const j = JSON.parse(localStorage.getItem('forma.ses')); if (j) { SES = j; if (!SES.logId && !SES.date && !SES.editId) SES.logId = 'l' + SES.start; } } catch (e) {} autoCloseSession(); }
 
 function onboarding() {
   openSheet(`<div class="welcome-in">
@@ -1363,7 +1399,7 @@ function mergeState(a, b) {
   if (!b || !Array.isArray(b.logs)) return a;
   if (a.sample && !b.sample) a = Object.assign(emptyState(), {onboarded: true});
   if (b.sample && !a.sample) b = emptyState();
-  const logs = {}; [...(b.logs || []), ...(a.logs || [])].forEach(l => logs[l.id] = l);
+  const logs = {}; [...(b.logs || []), ...(a.logs || [])].forEach(l => { const e = logs[l.id]; if (!(e && !e.open && l.open)) logs[l.id] = l; });
   const body = {}; [...(b.body || []), ...(a.body || [])].forEach(x => { const key = x.date + (x.waist ? 'm' : ''); body[key] = Object.assign(body[key] || {}, x); });
   const health = {...(b.health || {})}; Object.entries(a.health || {}).forEach(([d, v]) => health[d] = Object.assign({}, health[d], v));
   const newer = (a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b;
