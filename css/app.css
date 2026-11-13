@@ -367,3 +367,24 @@ html,body{height:auto;min-height:100%}
 .shell{overflow:clip}
 .shell,.app{min-height:0}
 .shell{align-content:start;align-items:start}
+/* тренировка: прошлый раз, заметки, ощущения, готовность */
+.prev{margin:0;line-height:1.45}
+.rpe{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rpe .chip{padding:6px 12px;font-size:13px}
+.inp.exnote{font-size:14px;padding:9px 12px;background:transparent;border-style:dashed}
+.inp.snote{min-height:64px;font-size:14px;font-family:inherit}
+.rq{display:flex;flex-direction:column;gap:6px;padding:4px 0}
+.ptips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.ptips>.small{flex-basis:100%}
+.chip.static{cursor:default;pointer-events:none}
+/* мобильность по шагам */
+.pl{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.plimg{width:100%;max-width:340px;aspect-ratio:4/3;border-radius:22px;overflow:hidden;background:var(--sunk);display:grid;place-items:center}
+.plimg img{width:100%;height:100%;object-fit:cover}
+.plimg .thumb{width:96px;height:96px}
+.pl h2{font-size:26px;line-height:1.15}
+.plhead{font-weight:600;font-size:16px}
+.plt{font-family:var(--f-display);font-size:88px;line-height:1;font-variant-numeric:tabular-nums;color:var(--accent)}
+.pl.prep .plt,.pl.rest .plt{color:var(--muted)}
+.pl .bar{width:100%}
+.plctl{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;width:100%;margin-top:6px}
