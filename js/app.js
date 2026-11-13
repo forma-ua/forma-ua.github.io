@@ -398,7 +398,11 @@ function vPlan() {
       <span class="eyebrow">${p.day} · ${p.main.length} основных · ≈ ${m.total} мин</span>
       <h1>${p.title}</h1>
       <div class="note"><b>Акцент дня.</b> ${p.accent}</div>
-      <button class="btn day block" data-act="start" data-k="${k}">Начать тренировку ${k}</button>
+      ${(() => { const live = SES && !SES.date && !SES.editId;
+        if (live && SES.k === k) return `<button class="btn day block" data-act="start" data-k="${k}">Продолжить тренировку ${k}</button>`;
+        const mon = iso(addDays(TODAY, -((TODAY.getDay() + 6) % 7))); const dn = S.logs.filter(l => l.day === k && !l.open && l.date >= mon && l.date <= TODAY_ISO).pop();
+        if (dn) return `<div class="row between" style="gap:10px;flex-wrap:wrap"><span class="tag good">Сделано · ${dn.date === TODAY_ISO ? 'сегодня' : fdate(dn.date)}</span><button class="btn line sm" data-act="log" data-id="${dn.id}">Посмотреть</button></div>`;
+        return `<button class="btn day block" data-act="start" data-k="${k}">Начать тренировку ${k}</button>`; })()}
     </section>
     ${fold('pw', '<h2><em>1</em>Разминка</h2>', '≈ 15 мин · ' + WARM.length + ' упр.', `<div class="list">${WARM.map(w => itemRow(w.id, `<b>${w.dose}</b>`, '')).join('')}</div>`, false, 'lfold')}
     ${fold('pa', '<h2><em>2</em>Активация</h2>', '≈ 4 мин · ' + p.act.length + ' упр.', `<div class="list">${p.act.map(a => itemRow(a.ex, `<b>${a.sets} × </b><small>${a.reps}</small>`, MUSCLES[EX[a.ex].p[0]])).join('')}</div>`, false, 'lfold')}
