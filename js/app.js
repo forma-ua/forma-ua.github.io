@@ -909,8 +909,8 @@ function renderSession() {
     const unit = e.kind === 'a' ? 'кг помощи' : (e.unit || 'кг');
     const wu = bw ? [] : warmupSets(id, SES.sets[id][0].w);
     const pv = exHistory(id).filter(x => !(SES.editId && x.date === SES.date)).pop();
-    const fs = x => (canW && x.w ? fmtKg(x.w) + '×' : '') + x.r + (e.kind === 't' ? ' с' : '');
-    const prevHtml = pv ? `<p class="prev small"><span class="muted">В прошлый раз · ${fdate(pv.date)}:</span> ${pv.sets.map(fs).join(' · ')}${pv.rpe ? ` <span class="tag">${['', 'легко', 'норм', 'тяжело'][pv.rpe]}</span>` : ''}</p>` : '';
+    const fs = x => (canW && x.w ? fmtKg(x.w) + '×' : '') + x.r + (e.kind === 't' ? ' с' : '') + (x.e ? ' <span class="muted">(' + ['', 'легко', 'норм', 'тяжело'][x.e] + ')</span>' : '');
+    const prevHtml = pv ? `<p class="prev small"><span class="muted">В прошлый раз · ${fdate(pv.date)}:</span> ${pv.sets.map(fs).join(' · ')}${pv.rpe && !pv.sets.some(x => x.e) ? ` <span class="tag">${['', 'легко', 'норм', 'тяжело'][pv.rpe]}</span>` : ''}</p>` : '';
     SES.rpe = SES.rpe || {}; const rv = SES.rpe[id];
     return `<section class="card" data-ex="${id}">
       <div class="row between" style="align-items:flex-start;gap:8px"><button class="item" style="padding:0;grid-template-columns:46px 1fr" data-act="ex" data-id="${id}">${thumb(id)}<div><div class="t">${esc(e.name)}</div><div class="s">${n} × ${lo}–${hi} ${note || ''}</div></div></button>
@@ -923,15 +923,15 @@ function renderSession() {
       ${SES.sets[id].map((s, i) => `<div class="setrow"><span class="n">${i + 1}</span>
         ${canW && !bw ? `<input class="inp" id="s-${id}-${i}-w" data-set="${id}|${i}|w" type="number" step="0.5" inputmode="decimal" value="${s.w}" placeholder="кг" aria-label="Вес, подход ${i + 1}">` : `<span class="inp nobw">${canW ? (e.kind === 'a' ? 'без помощи' : 'свой вес') : (e.kind === 'band' ? 'резинка' : '—')}</span>`}
         <input class="inp" id="s-${id}-${i}-r" data-set="${id}|${i}|r" type="number" inputmode="numeric" value="${s.r}" placeholder="${hi}" aria-label="Повторы, подход ${i + 1}">
-        <button class="ok" data-act="done" data-id="${id}" data-i="${i}" aria-pressed="${s.done}" aria-label="Подход выполнен">✓</button></div>`).join('')}
+        <button class="ok" data-act="done" data-id="${id}" data-i="${i}" aria-pressed="${s.done}" aria-label="Подход выполнен">✓</button></div>
+        <div class="setrpe" id="sr-${id}-${i}" ${s.done ? '' : 'hidden'}><span class="small muted">подход ${i + 1}:</span>${[[1, 'легко'], [2, 'норм'], [3, 'тяжело']].map(([v, l]) => `<button class="chip" data-act="srpe" data-id="${id}" data-i="${i}" data-v="${v}" aria-pressed="${s.e === v}">${l}</button>`).join('')}</div>`).join('')}
       ${e.kind === 't' && !past ? `<button class="btn line sm" data-act="hold" data-id="${id}">Засечь ${holdSec(id)} сек</button>` : ''}
-      <div class="rpe" role="group" aria-label="Как далось упражнение"><span class="small muted">Как далось?</span>${[[1, 'легко'], [2, 'норм'], [3, 'тяжело']].map(([v, l]) => `<button class="chip" data-act="rpe" data-id="${id}" data-v="${v}" aria-pressed="${rv === v}">${l}</button>`).join('')}</div>
       <input class="inp exnote" data-note="${id}" value="${esc((S.notes || {})[id] || '')}" placeholder="Заметка: сиденье, хват, ощущения…" aria-label="Заметка к упражнению">
     </section>`;
   }).join('');
   const chk = (grp, id, dose) => `<label class="chk"><input type="checkbox" data-chk="${grp}|${id}" ${SES[grp][id] ? 'checked' : ''}><span>${esc(getItem(id).name)}</span><span class="small muted">${esc(dose)}</span></label>`;
   const title = past ? `${SES.editId ? 'Правка' : 'Тренировка'} <em>${k}</em>` : `Тренировка <em>${k}</em>`;
-  openSheet(sheetTop(title, past ? `<span class="tag day">${fdate(SES.date)}</span>` : `<span class="tag day">${el} мин</span>`) + `
+  openSheet(sheetTop(title, past ? `<span class="tag day">${fdate(SES.date)}</span>` : `<span class="tag day" id="sesmin">${el} мин</span>`) + `
     <p class="small muted">${p.title}. ${past ? (SES.editId ? 'Поправь веса и повторы и нажми «Сохранить».' : 'Тренировка задним числом: впиши, что делала, и отметь подходы галочкой.') : 'Веса подставлены по прошлой тренировке, экран не погаснет до конца.'}</p>
     ${past ? '' : readyCard()}
     ${past ? '' : `<section class="card"><h3>Разминка</h3><div>${WARM.map(w => chk('warm', w.id, w.dose)).join('')}</div></section>
@@ -1060,14 +1060,15 @@ function confetti() {
   requestAnimationFrame(step);
 }
 function buildLog(endAt) {
-  const sets = {}; Object.entries(SES.sets).forEach(([id, arr]) => { const bw = SES.bw && SES.bw[id]; const d = arr.filter(s => s.done).map(s => ({w: bw ? 0 : (+String(s.w).replace(',', '.') || 0), r: +s.r || 0, done: true})); if (d.length) sets[id] = d; });
+  const sets = {}; Object.entries(SES.sets).forEach(([id, arr]) => { const bw = SES.bw && SES.bw[id]; const d = arr.filter(s => s.done).map(s => ({w: bw ? 0 : (+String(s.w).replace(',', '.') || 0), r: +s.r || 0, done: true, ...(s.e ? {e: s.e} : {})})); if (d.length) sets[id] = d; });
   const old = SES.editId ? S.logs.find(l => l.id === SES.editId) : null;
   let start = SES.start, end = endAt || Date.now();
   if (old) { start = old.start; end = old.end; } else if (SES.date) { const d0 = parseISO(SES.date); d0.setHours(18, 30); start = +d0; end = start + 80 * 60000; }
   const min = Math.max(1, Math.round((end - start) / 60000));
   const kcal = old ? old.kcal : Math.round(metKcal(6, curWeight(), Math.min(7, min)) + metKcal(5, curWeight(), Math.max(0, min - 15)) + metKcal(2.5, curWeight(), Math.min(8, min)));
   const log = {id: old ? old.id : (SES.logId || 'l' + end), date: SES.date || iso(new Date(start)), day: SES.k, start, end, sets, kcal, avgHR: old ? old.avgHR : null, src: old ? old.src : (SES.date ? 'внесено вручную' : 'оценка forma')};
-  const rpe = {}; Object.entries(SES.rpe || {}).forEach(([id, v]) => { if (sets[id] && v) rpe[id] = v; }); if (Object.keys(rpe).length) log.rpe = rpe; else if (old && old.rpe) log.rpe = old.rpe;
+  const rpe = {}; Object.entries(SES.rpe || {}).forEach(([id, v]) => { if (sets[id] && v) rpe[id] = v; });
+  Object.entries(sets).forEach(([id, arr]) => { const r = arr.filter(x => x.e).pop(); if (r) rpe[id] = r.e; }); if (Object.keys(rpe).length) log.rpe = rpe; else if (old && old.rpe) log.rpe = old.rpe;
   const note = (SES.note || '').trim(); if (note) log.note = note; else if (old && old.note && SES.note == null) log.note = old.note;
   if (SES.ready) log.ready = SES.ready; if (SES.light) log.light = true;
   const nDone = Object.values(sets).reduce((a, x) => a + x.length, 0);
@@ -1275,6 +1276,7 @@ async function clearPhotos() {
 
 // незавершённая тренировка переживает закрытие приложения
 let AUTOSAVE_T = null;
+setInterval(() => { const t = document.getElementById('sesmin'); if (t && SES && !SES.date) t.textContent = Math.round((Date.now() - SES.start) / 60000) + ' мин'; }, 15000);
 function saveSes() {
   if (SES) SES.last = Date.now();
   try { if (SES) localStorage.setItem('forma.ses', JSON.stringify(SES)); else localStorage.removeItem('forma.ses'); } catch (e) {}
@@ -1303,7 +1305,8 @@ function autoCloseSession() {
   if (!SES.logId && idle > 48 * 3600e3) { SES = null; saveSes(); }
   return false;
 }
-function loadSes() { try { const j = JSON.parse(localStorage.getItem('forma.ses')); if (j) { SES = j; if (!SES.logId && !SES.date && !SES.editId) SES.logId = 'l' + SES.start; } } catch (e) {} autoCloseSession(); }
+function fixOrphanDrafts() { let ch = false; S.logs.forEach(l => { if (l.open && !(SES && SES.logId === l.id)) { delete l.open; l.auto = true; if (!l.prs) l.prs = []; ch = true; } }); if (ch) save(); }
+function loadSes() { setTimeout(fixOrphanDrafts, 0); try { const j = JSON.parse(localStorage.getItem('forma.ses')); if (j) { SES = j; if (!SES.logId && !SES.date && !SES.editId) SES.logId = 'l' + SES.start; } } catch (e) {} autoCloseSession(); }
 
 function onboarding() {
   openSheet(`<div class="welcome-in">
@@ -1503,7 +1506,7 @@ document.addEventListener('click', e => {
   else if (a === 'repm') { const [y, m] = (REPM || TODAY_ISO.slice(0, 7)).split('-').map(Number); const d = new Date(y, m - 1 + (+b.dataset.d), 1); REPM = iso(d).slice(0, 7); render(); }
   else if (a === 'gotomonth') { TAB = 'journal'; JTAB = 'month'; REPM = b.dataset.m; render(); window.scrollTo(0, 0); }
   else if (a === 'log') logSheet(b.dataset.id);
-  else if (a === 'start') startSession(b.dataset.k);
+  else if (a === 'start') { if (SES && !SES.date && !SES.editId) { if (SES.k !== b.dataset.k) toast('Сначала заверши тренировку ' + SES.k + ' — продолжаю её'); wake(true); renderSession(); } else startSession(b.dataset.k); }
   else if (a === 'restflow') restSheet();
   else if (a === 'player') playerStart(b.dataset.src);
   else if (a === 'plpause') { if (PL) { PL.paused = !PL.paused; b.textContent = PL.paused ? 'Продолжить' : 'Пауза'; } }
@@ -1514,7 +1517,8 @@ document.addEventListener('click', e => {
   else if (a === 'light' && SES) { lightSession(); const y = $('#sheet .sheet').scrollTop; renderSession(); $('#sheet .sheet').scrollTop = y; }
   else if (a === 'hold' && SES) holdStart(b.dataset.id);
   else if (a === 'settings') settingsSheet();
-  else if (a === 'done') { const s = SES.sets[b.dataset.id][+b.dataset.i]; s.done = !s.done; b.setAttribute('aria-pressed', s.done); saveSes();
+  else if (a === 'srpe' && SES) { const s = SES.sets[b.dataset.id][+b.dataset.i]; const v = +b.dataset.v; s.e = s.e === v ? 0 : v; saveSes(); b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', +x.dataset.v === s.e)); }
+  else if (a === 'done') { const s = SES.sets[b.dataset.id][+b.dataset.i]; s.done = !s.done; b.setAttribute('aria-pressed', s.done); const sr = $(`#sr-${b.dataset.id}-${b.dataset.i}`); if (sr) sr.hidden = !s.done; saveSes();
     if (s.done) { if (!s.r) { const inp = $(`#s-${b.dataset.id}-${b.dataset.i}-r`); s.r = inp.placeholder; inp.value = s.r; } startTimer(['hip_thrust','leg_press','rdl','bulgarian'].includes(b.dataset.id) ? 120 : 90); } }
   else if (a === 'tstop') { clearInterval(TIMER); stopBeeps(); $('#timer').hidden = true; }
   else if (a === 'swap') { const id0 = b.dataset.id; const alt = PLAN[SES.k].main.find(m => m[0] === id0)[5].alt; SES.swap[id0] = SES.swap[id0] ? null : alt; saveSes(); renderSession(); }
