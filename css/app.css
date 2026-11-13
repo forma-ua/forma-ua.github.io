@@ -394,3 +394,6 @@ html,body{height:auto;min-height:100%}
 .mhero .stat b small{font-size:.55em;font-weight:500;color:var(--muted)}
 .up{color:var(--good)} .down{color:var(--warn)}
 .mteaser .eyebrow{display:block;margin-bottom:2px}
+.setrpe{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 0 4px 34px;margin-top:-2px}
+.setrpe .chip{padding:4px 10px;font-size:12.5px}
+.setrpe[hidden]{display:none}
