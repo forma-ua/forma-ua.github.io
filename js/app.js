@@ -369,6 +369,7 @@ function vToday() {
     ${month.length ? fold('prm', '<h2>Рекорды за месяц</h2>', `<span class="tag pr">${month.length} PR</span>`, `
       <div class="prs">${month.slice(-3).reverse().map(p => `<div class="prrow"><span class="small">${esc(EX[p.id].name)}<br><span class="muted">${fdate(p.date)} · ${p.label}</span></span><b>${p.text}</b></div>`).join('')}</div>
       <button class="btn line sm" data-act="gotorec">Все рекорды</button>`) : ''}
+    ${monthTeaser()}
     ${lastLog ? `<section class="card d${lastLog.day}"><div class="row between"><h2>Последняя тренировка</h2><span class="tag day">${lastLog.day}</span></div>
       <div class="grid3"><div class="stat"><span>${fdate(lastLog.date)}</span><b>${Math.round((lastLog.end - lastLog.start) / 60000)}</b><span>мин</span></div>
       <div class="stat"><span>Подходов</span><b>${nSets(lastLog.sets)}</b><span>рабочих</span></div>
@@ -460,9 +461,10 @@ function recordsList() {
   return rows ? `<div class="list">${rows}</div>` : '<section class="card flat"><h2>Рекордов пока нет</h2><p class="small muted">Они появятся после первых тренировок — и каждый новый отметим.</p></section>';
 }
 function vJournal() {
-  const seg = `<div class="chips" role="group" aria-label="Раздел журнала">${[['calendar','Календарь'],['logs','История'],['progress','Прогресс'],['records','Рекорды'],['weight','Вес тела'],['body','Замеры']].map(([k, l]) => `<button class="chip" data-act="jtab" data-k="${k}" aria-pressed="${JTAB === k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="chips" role="group" aria-label="Раздел журнала">${[['calendar','Календарь'],['logs','История'],['progress','Прогресс'],['month','Итоги'],['records','Рекорды'],['weight','Вес тела'],['body','Замеры']].map(([k, l]) => `<button class="chip" data-act="jtab" data-k="${k}" aria-pressed="${JTAB === k}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (JTAB === 'records') body = recordsList();
+  else if (JTAB === 'month') body = monthHtml(REPM || TODAY_ISO.slice(0, 7));
   else if (JTAB === 'calendar') body = calendarHtml();
   else if (JTAB === 'weight') {
     const pts = S.body.map(b => ({x: b.date, y: b.weight}));
@@ -503,6 +505,84 @@ function vJournal() {
   }
   return `<div class="screen"><div class="screen-h"><span class="eyebrow">Веса, замеры, история</span><h1>Журнал</h1></div>${seg}${body}</div>`;
 }
+// ---------- итоги месяца ----------
+const MONN = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const MONG = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+let REPM = null;
+const prevYM = ym => { const [y, m] = ym.split('-').map(Number); return iso(new Date(y, m - 2, 1)).slice(0, 7); };
+function monthStats(ym) {
+  const [y, m] = ym.split('-').map(Number); const days = new Date(y, m, 0).getDate();
+  const cur = ym === TODAY_ISO.slice(0, 7); const last = cur ? TODAY.getDate() : days; const start = ym + '-01';
+  const logs = S.logs.filter(l => l.date.startsWith(ym));
+  let planned = 0; for (let d = 1; d <= last; d++) if (planKeyFor(new Date(y, m - 1, d))) planned++;
+  const sets = logs.reduce((a, l) => a + nSets(l.sets), 0), min = logs.reduce((a, l) => a + Math.round((l.end - l.start) / 6e4), 0);
+  const prs = logs.flatMap(l => (l.prs || []).map(p => ({...p, date: l.date})));
+  const g = {}; RG.forEach(([n]) => g[n] = 0);
+  logs.forEach(l => Object.entries(l.sets).forEach(([id, arr]) => { const e = EX[id]; if (!e) return; RG.forEach(([n, ms]) => { if (e.p.some(x => ms.includes(x))) g[n] += arr.length; else if (e.s.some(x => ms.includes(x))) g[n] += arr.length * 0.5; }); }));
+  const weeks = Math.max(1, last / 7); const gw = {}; Object.keys(g).forEach(n => gw[n] = Math.round(g[n] / weeks * 2) / 2);
+  const lifts = [];
+  [...new Set(logs.flatMap(l => Object.keys(l.sets)))].forEach(id => { const e = EX[id]; if (!e || (e.kind !== 'w' && e.kind !== 'a')) return;
+    const h = exHistory(id).filter(x => x.sets.some(s => s.w)); const inM = h.filter(x => x.date.startsWith(ym)); if (!inM.length) return;
+    const a = h.filter(x => x.date < start).pop() || inM[0], b = inM[inM.length - 1]; if (a === b) return;
+    const wa = e.kind === 'a' ? Math.min(...a.sets.map(s => s.w)) : Math.max(...a.sets.map(s => s.w)), wb = e.kind === 'a' ? Math.min(...b.sets.map(s => s.w)) : Math.max(...b.sets.map(s => s.w));
+    const d = e.kind === 'a' ? wa - wb : wb - wa; if (d > 0) lifts.push({id, from: wa, to: wb, d, pct: wa ? d / wa : 1, kind: e.kind}); });
+  lifts.sort((p, q) => q.pct - p.pct);
+  const wk = {}; logs.forEach(l => { const d = parseISO(l.date); const k = iso(addDays(d, -((d.getDay() + 6) % 7))); wk[k] = wk[k] || {n: 0, sets: 0}; wk[k].n++; wk[k].sets += nSets(l.sets); });
+  const best = Object.entries(wk).sort((p, q) => q[1].n - p[1].n || q[1].sets - p[1].sets)[0];
+  const bm = S.body.filter(b => b.date.startsWith(ym)), bp = S.body.filter(b => b.date < start);
+  const pick = (arr, f, rev) => { const a = rev ? [...arr].reverse() : arr; const x = a.find(b => b[f]); return x ? x[f] : null; };
+  const ch = f => { const a = pick(bp, f, true) ?? pick(bm, f), b = pick(bm, f, true); return a != null && b != null && (bm.filter(x => x[f]).length > 1 || pick(bp, f, true) != null) ? r1(b - a) : null; };
+  const hd = Object.entries(S.health).filter(([d]) => d.startsWith(ym) && d < TODAY_ISO);
+  const pd = hd.filter(([, x]) => x.protein); const hit = pd.filter(([d, x]) => x.protein >= proteinFor(planKeyFor(parseISO(d))).g * 0.9).length;
+  const avg = k => { const v = hd.map(([, x]) => x[k]).filter(Boolean); return v.length ? Math.round(v.reduce((p, q) => p + q, 0) / v.length) : null; };
+  const rp = logs.flatMap(l => Object.values(l.rpe || {}));
+  return {ym, y, m, cur, last, days, logs, n: logs.length, planned, sets, min, prs, gw, lifts, best, dW: ch('weight'), dWaist: ch('waist'), dHips: ch('hips'),
+    protAvg: avg('protein'), protDays: pd.length, hit, steps: avg('steps'), active: avg('activeKcal'), mob: (S.mobDays || []).filter(d => d.startsWith(ym)).length,
+    easy: rp.filter(v => v === 1).length, hard: rp.filter(v => v === 3).length, light: logs.filter(l => l.light).length};
+}
+function monthTeaser() {
+  if (TODAY.getDate() > 7) return ''; const pm = prevYM(TODAY_ISO.slice(0, 7)); const st = monthStats(pm); if (!st.n) return '';
+  return `<section class="card mteaser"><div class="row between"><div><span class="eyebrow">готово</span><h2>Итоги ${MONG[st.m - 1]}</h2></div><span class="tag good">${st.n} трен.</span></div>
+    <p class="small muted">${st.prs.length ? st.prs.length + ' ' + plural(st.prs.length, 'рекорд', 'рекорда', 'рекордов') + ', ' : ''}${st.lifts.length ? 'веса выросли в ' + st.lifts.length + ' ' + plural(st.lifts.length, 'упражнении', 'упражнениях', 'упражнениях') : 'посмотри, что получилось за месяц'}.</p>
+    <button class="btn line sm" data-act="gotomonth" data-m="${pm}">Посмотреть итоги</button></section>`;
+}
+const sgn = (v, unit = '') => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtKg(Math.abs(v)) + unit;
+function monthHtml(ym) {
+  const st = monthStats(ym), pv = monthStats(prevYM(ym)); const pct = st.planned ? Math.round(st.n / st.planned * 100) : 0;
+  const nav = `<section class="card"><div class="row between"><button class="icon-btn" data-act="repm" data-d="-1" aria-label="Предыдущий месяц">‹</button><h2>${MONN[st.m - 1]} ${st.y}</h2><button class="icon-btn" data-act="repm" data-d="1" aria-label="Следующий месяц" ${st.cur ? 'disabled' : ''}>›</button></div>
+    ${st.cur ? `<p class="small muted" style="text-align:center">Месяц ещё идёт — итоги на ${st.last} ${MONG[st.m - 1]}.</p>` : ''}</section>`;
+  if (!st.n) return nav + `<section class="card flat"><h2>Тренировок не было</h2><p class="small muted">Когда отметишь тренировки в этом месяце, здесь появятся итоги: рекорды, рост весов, подходы на мышцы, тело и питание.</p></section>`;
+  const gl = st.gw['Ягодицы'];
+  const head = `${st.n} ${plural(st.n, 'тренировка', 'тренировки', 'тренировок')} из ${st.planned} по плану${st.prs.length ? ', ' + st.prs.length + ' ' + plural(st.prs.length, 'рекорд', 'рекорда', 'рекордов') : ''}${st.lifts.length ? ', веса выросли в ' + st.lifts.length + ' ' + plural(st.lifts.length, 'упражнении', 'упражнениях', 'упражнениях') : ''}.`;
+  const cmp = (a, b, l) => pv.n ? `<span class="${a > b ? 'up' : a < b ? 'down' : 'muted'}">${a > b ? '↑' : a < b ? '↓' : '='} ${l}</span>` : '';
+  const tips = [];
+  if (pct < 70) tips.push(`Посещаемость ${pct}% — главный рычаг роста. Цель на следующий месяц: не пропускать больше одной тренировки в неделю.`);
+  if (gl < 12) tips.push(`Ягодицам доставалось ~${String(gl).replace('.', ',')} подходов в неделю при норме 12–20. Добавь по подходу в мостик и отведения.`);
+  else if (gl > 25) tips.push('На ягодицы очень много подходов — если чувствуешь усталость, убери по одному подходу в изолирующих.');
+  if (st.protDays >= 5 && st.hit / st.protDays < 0.5) tips.push(`Норма белка была только в ${st.hit} из ${st.protDays} дней. Для роста мышц это сейчас важнее всего — смотри подсказки в карточке «Белок».`);
+  if (st.hard >= 6 && st.hard > st.easy * 2) tips.push('Часто было «тяжело». Если веса не растут 2–3 недели, сделай лёгкую неделю: те же веса, вдвое меньше подходов.');
+  if (!st.lifts.length && st.n >= 6) tips.push('Веса за месяц не выросли. Проверь, что добираешь до верха диапазона повторов — тогда forma. предложит прибавку.');
+  if (!tips.length) tips.push('Месяц прошёл ровно — продолжай в том же темпе. Добавь замеры, если давно не обновляла: форма меняется раньше, чем вес.');
+  return nav + `
+    <section class="hero mhero"><span class="eyebrow">итоги ${MONG[st.m - 1]}</span><h1>${st.cur ? 'Месяц в процессе' : pct >= 90 ? 'Отличный месяц' : pct >= 70 ? 'Хороший месяц' : 'Есть куда расти'}</h1><p>${head}</p>
+      <div class="grid2"><div class="stat"><span>Тренировок</span><b>${st.n}<small>/${st.planned}</small></b><span>${cmp(st.n, pv.n, 'к прошлому')}</span></div>
+      <div class="stat"><span>Рабочих подходов</span><b>${st.sets}</b><span>${cmp(st.sets, pv.sets, 'к прошлому')}</span></div>
+      <div class="stat"><span>В зале</span><b>${Math.floor(st.min / 60)}<small> ч ${st.min % 60} мин</small></b><span>&nbsp;</span></div>
+      <div class="stat"><span>Рекордов</span><b>${st.prs.length}</b><span>${cmp(st.prs.length, pv.prs.length, 'к прошлому')}</span></div></div></section>
+    ${st.lifts.length ? `<section class="card"><h2>Веса выросли</h2><div class="list">${st.lifts.slice(0, 6).map(x => `<button class="item" data-act="ex" data-id="${x.id}" style="grid-template-columns:minmax(0,1fr) auto"><div><div class="t">${esc(EX[x.id].name)}</div><div class="s">${fmtKg(x.from)} → ${fmtKg(x.to)} ${x.kind === 'a' ? 'кг помощи' : 'кг'}</div></div><div class="r"><b class="up">${x.kind === 'a' ? '−' : '+'}${fmtKg(x.d)}</b></div></button>`).join('')}</div>${st.lifts.length > 6 ? `<p class="small muted">И ещё в ${st.lifts.length - 6}.</p>` : ''}</section>` : ''}
+    ${st.prs.length ? fold('m-pr', '<h2>Рекорды</h2>', st.prs.length + ' PR', `<div class="prs">${st.prs.slice(-8).reverse().map(p => `<div class="prrow"><span class="small">${esc(EX[p.id] ? EX[p.id].name : '')}<br><span class="muted">${fdate(p.date)} · ${p.label}</span></span><b>${p.text}</b></div>`).join('')}</div>`) : ''}
+    ${fold('m-vol', '<h2>Подходы на мышцы</h2>', 'ягодицы ~' + String(gl).replace('.', ',') + ' в неделю', '<p class="small muted">Среднее за неделю. Полоска — рекомендуемый коридор.</p>' + Object.entries(VOLT).map(([n, [lo, hi]]) => { const v = st.gw[n]; const max = hi * 1.4; const s2 = v < lo ? ['мало', 'warn'] : v > hi * 1.25 ? ['много', 'warn'] : ['в норме', 'good'];
+      return `<div class="vrow"><div class="row between"><span class="small"><b>${n}</b></span><span class="small"><b class="num">${String(v).replace('.', ',')}</b> <span class="muted">из ${lo}–${hi}</span> <span class="tag ${s2[1]}">${s2[0]}</span></span></div><div class="vbar"><i class="band" style="left:${lo / max * 100}%;width:${(hi - lo) / max * 100}%"></i><i class="fill" style="width:${Math.min(100, v / max * 100)}%"></i></div></div>`; }).join(''))}
+    <section class="card"><h2>Тело и питание</h2><div class="grid2">
+      <div class="stat"><span>Вес</span><b>${st.dW != null ? sgn(st.dW) : '—'}</b><span>кг за месяц</span></div>
+      <div class="stat"><span>Талия · ягодицы</span><b>${st.dWaist != null ? sgn(st.dWaist) : '—'} · ${st.dHips != null ? sgn(st.dHips) : '—'}</b><span>см</span></div>
+      <div class="stat"><span>Белок в среднем</span><b>${st.protAvg ?? '—'}</b><span>${st.protDays ? 'г · норма в ' + st.hit + ' из ' + st.protDays + ' дн.' : 'нет данных из Yazio'}</span></div>
+      <div class="stat"><span>Шаги в среднем</span><b>${st.steps ? st.steps.toLocaleString('ru') : '—'}</b><span>${st.active ? st.active + ' акт. ккал/день' : 'в день'}</span></div></div>
+      ${st.mob || st.light ? `<p class="small muted">${st.mob ? 'Комплексов мобильности: ' + st.mob + '. ' : ''}${st.light ? 'Облегчённых тренировок: ' + st.light + '.' : ''}</p>` : ''}</section>
+    ${st.best ? `<section class="card flat"><h3>Лучшая неделя</h3><p class="small">С ${fdate(st.best[0])}: ${st.best[1].n} ${plural(st.best[1].n, 'тренировка', 'тренировки', 'тренировок')}, ${st.best[1].sets} подходов.</p></section>` : ''}
+    <section class="card"><h2>На следующий месяц</h2><ul class="clean">${tips.slice(0, 3).map(t => `<li>${t}</li>`).join('')}</ul></section>`;
+}
+
 // ---------- сворачиваемые блоки ----------
 const FOLDS = (() => { try { return JSON.parse(localStorage.getItem('forma.folds')) || {}; } catch (e) { return {}; } })();
 function fold(id, title, meta, body, def = false, cls = 'card', force) {
@@ -1372,6 +1452,8 @@ document.addEventListener('click', e => {
   else if (a === 'gotoprog') { TAB = 'journal'; JTAB = 'progress'; render(); window.scrollTo(0, 0); }
   else if (a === 'cat') { LIBCAT = b.dataset.c; render(); }
   else if (a === 'jtab') { JTAB = b.dataset.k; render(); }
+  else if (a === 'repm') { const [y, m] = (REPM || TODAY_ISO.slice(0, 7)).split('-').map(Number); const d = new Date(y, m - 1 + (+b.dataset.d), 1); REPM = iso(d).slice(0, 7); render(); }
+  else if (a === 'gotomonth') { TAB = 'journal'; JTAB = 'month'; REPM = b.dataset.m; render(); window.scrollTo(0, 0); }
   else if (a === 'log') logSheet(b.dataset.id);
   else if (a === 'start') startSession(b.dataset.k);
   else if (a === 'restflow') restSheet();
