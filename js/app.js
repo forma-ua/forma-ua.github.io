@@ -323,13 +323,13 @@ function greeting() {
 // ---------- Сегодня ----------
 function vToday() {
   const k = planKeyFor(TODAY); const nx = nextWorkout(); const pr = proteinFor(k); const hd = S.health[TODAY_ISO] || {};
-  const doneToday = S.logs.find(l => l.date === TODAY_ISO);
+  const doneToday = S.logs.find(l => l.date === TODAY_ISO && !l.open);
   const ws = weekStats();
   const week = [...Array(7)].map((_, i) => { const d = addDays(ws.monday, i); const kk = planKeyFor(d); const done = S.logs.some(l => l.date === iso(d));
     const dk = S.logs.find(l => l.date === iso(d))?.day || kk; return `<button class="wd ${dk ? 'on d' + dk : ''} ${iso(d) === TODAY_ISO ? 'today' : ''} ${done ? 'done' : ''}" data-act="day" data-date="${iso(d)}" aria-label="${DOWL[d.getDay()]}${done ? ', тренировка сделана' : ''}">${DOW[d.getDay()]}<b>${dk || '·'}</b></button>`; }).join('');
   const hk = k || nx.key, P = PLAN[hk];
   const rec = recovery(); const gl = Math.min(rec.glutemax, rec.glutemed);
-  const recNote = k && gl < 70 ? `<p class="small"><b>Ягодицы восстановились на ${gl}%</b> — сегодня оставляй 2–3 повтора в запасе.</p>` : '';
+  const recNote = k && !doneToday && !SES && gl < 70 ? `<p class="small"><b>Ягодицы восстановились на ${gl}%</b> — сегодня оставляй 2–3 повтора в запасе.</p>` : '';
   const hero = `
     <section class="hero d${hk}" aria-label="${k ? 'Тренировка сегодня' : 'День отдыха'}"><span class="letter" aria-hidden="true">${hk}</span>
       <span class="eyebrow">${k ? 'Сегодня · тренировка ' + k : 'Сегодня ' + DOWL[TODAY.getDay()] + ' · отдых'}</span>
@@ -337,7 +337,7 @@ function vToday() {
       <p>${k ? P.accent.split('. ')[0] + '.' : 'День восстановления. Можно сделать 12-минутный комплекс для таза из гида — он не мешает отдыху.'}</p>
       <div class="meta"><span class="tag day">≈ ${sessionMinutes(hk).total} мин</span><span class="tag day">${P.main.length} упражнений</span>${doneToday ? '<span class="tag good">сегодня сделано</span>' : ''}</div>
       ${recNote}
-      <div class="row wrap">${k ? `<button class="btn day" data-act="start" data-k="${k}">${doneToday ? 'Ещё раз' : 'Начать тренировку'}</button><button class="btn line sm" data-act="gotoplan" data-k="${k}">План дня</button>`
+      <div class="row wrap">${k && doneToday && !SES ? `<button class="btn day" data-act="log" data-id="${doneToday.id}">Посмотреть тренировку</button>${(() => { let d = 1, kk = null; for (; d < 8 && !(kk = planKeyFor(addDays(TODAY, d))); d++); kk = kk || 'A'; return `<button class="btn line sm" data-act="gotoplan" data-k="${kk}">Следующая — ${kk}, ${d === 1 ? 'завтра' : DOWL[addDays(TODAY, d).getDay()].toLowerCase()}</button>`; })()}` : k ? `<button class="btn day" data-act="start" data-k="${k}">${SES && !SES.date && !SES.editId ? 'Продолжить тренировку' : 'Начать тренировку'}</button><button class="btn line sm" data-act="gotoplan" data-k="${k}">План дня</button>`
         : `<button class="btn day" data-act="restflow">${(S.mobDays || []).includes(TODAY_ISO) ? 'Комплекс сделан ✓' : 'Комплекс 12 минут'}</button><button class="btn line sm" data-act="start" data-k="${nx.key}">Начать ${nx.key} сейчас</button>`}</div>
     </section>`;
   const eat = hd.protein || 0; const pfrac = Math.min(1, eat / pr.g);
