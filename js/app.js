@@ -1135,14 +1135,23 @@ function diagText() {
 }
 
 function syncSheet() {
+  const has = !!ghTok();
   openSheet(sheetTop('Синхронизация') + `
+    <section class="card"><div class="row between"><h3>Автоматически</h3><span class="tag ${has && !S.settings.pullErr ? 'good' : ''}">${has ? 'включено' : 'выключено'}</span></div>
+      <p class="small muted">Команда «forma sync» сама отправляет данные из Здоровья в твой закрытый репозиторий forma-data, а forma. забирает их при каждом открытии. Вставлять ничего не нужно.</p>
+      <p class="small" id="ghstat">${ghStatus()}</p>
+      <label class="f">Ключ GitHub для forma-data<input class="inp" id="ghtok" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${has ? '•••• ключ сохранён' : 'github_pat_…'}"></label>
+      <div class="row wrap"><button class="btn sm" data-act="ghsave">Сохранить ключ</button>${has ? '<button class="btn line sm" data-act="runshortcut">Запустить команду</button><button class="btn line sm" data-act="ghpull">Проверить сейчас</button><button class="btn ghost sm" data-act="ghdel">Удалить ключ</button>' : ''}</div>
+      <p class="small muted">Ключ хранится только на этом телефоне — в резервную копию и на Google Диск он не попадает.</p></section>
+    <details class="acc"><summary><h2>Вручную, через буфер</h2></summary><div class="acc-b">
     <section class="card"><h3>1. Запусти команду</h3><p class="small muted">Откроются «Команды», заберут данные из Apple Health за сегодня и скопируют их. Потом вернись сюда.</p>
       <label class="f">Название команды — точно как в приложении «Команды»<input class="inp" id="sc-name" value="${esc(scName())}" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></label>
       <button class="btn" data-act="runshortcut">Запустить команду</button>
       ${S.settings.lastSyncRaw ? '<button class="btn line sm" data-act="syncres">Что пришло в прошлый раз</button>' : ''}
       <p class="small muted">Если «Команды» пишут, что команда не найдена: открой «Команды», посмотри точное название (с пробелами и регистром) и впиши его сюда.</p></section>
     <section class="card"><h3>2. Вставь данные</h3><button class="btn line" data-act="paste">Вставить из буфера</button>
-      <details><summary class="small muted" style="cursor:pointer">Вставить вручную</summary><textarea class="inp" id="imp" style="margin-top:8px" placeholder='{"date":"${TODAY_ISO}","protein":96}'></textarea><button class="btn line sm" data-act="import" style="margin-top:8px">Импортировать</button></details></section>
+      <details><summary class="small muted" style="cursor:pointer">Вставить текстом</summary><textarea class="inp" id="imp" style="margin-top:8px" placeholder='{"date":"${TODAY_ISO}","protein":96}'></textarea><button class="btn line sm" data-act="import" style="margin-top:8px">Импортировать</button></details></section>
+    </div></details>
     <details class="acc"><summary><h2>Как создать команду «forma sync»</h2></summary><div class="acc-b small">
       <p>Один раз, на iPhone, в приложении «Команды» → «+». Назови команду <b>forma sync</b>.</p>
       <ol class="steps">
@@ -1186,8 +1195,10 @@ async function pasteSync() {
   catch (e) { toast('Не получилось прочитать буфер. Вставь вручную ниже.'); const d = $('#sheet details'); if (d) d.open = true; }
 }
 const toNum = v => { if (v == null || v === '') return null; const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : null; };
-function mergeSync(text) {
+function mergeSync(text, opt = {}) {
   let j; try { j = JSON.parse(text); } catch (e) { return 'Не получилось прочитать данные. Проверь, что команда скопировала словарь.'; }
+  const mx = (...ks) => { const v = ks.map(k => toNum(j[k])).filter(Boolean); return v.length ? Math.max(...v) : null; };
+  j.eatKcal = mx('eatKcal', 'eatKcal2', 'eatKcal3'); j.activeKcal = mx('activeKcal', 'activeKcal2'); j.workoutKcal = mx('workoutKcal', 'workoutKcal2');
   const date = /^\d{4}-\d{2}-\d{2}$/.test(j.date || '') ? j.date : TODAY_ISO;
   const h = S.health[date] = S.health[date] || {}; let n = 0;
   ['activeKcal','steps','eatKcal','protein','fat','carbs'].forEach(k => { const v = toNum(j[k]); if (v) { h[k] = Math.round(v); n++; } });
@@ -1196,12 +1207,13 @@ function mergeSync(text) {
   if (w) { S.body = S.body.filter(b => b.date !== date || b.waist); const m = S.body.find(b => b.date === date); if (m) m.weight = r1(w); else S.body.push({date, weight: r1(w)}); S.body.sort((x, y) => x.date < y.date ? -1 : 1); n++; }
   const hr0 = toNum(j.workoutHR), hr = hr0 && hr0 >= 90 ? hr0 : null, kc = toNum(j.workoutKcal);
   const log = S.logs.filter(l => l.date === date).pop();
-  if (log && (hr || kc)) { if (hr) log.avgHR = Math.round(hr); if (kc) log.kcal = Math.round(kc + metKcal(1, curWeight(), (log.end - log.start) / 60000)); log.src = 'Apple Watch'; n++; }
+  if (log && hr) { log.avgHR = Math.round(hr); if (kc) log.kcal = Math.round(kc + metKcal(1, curWeight(), (log.end - log.start) / 60000)); log.src = 'Apple Watch'; n++; }
   const raw = {}; ['protein','eatKcal','fat','carbs','activeKcal','steps','weight','workoutHR','workoutKcal'].forEach(k => raw[k] = toNum(j[k]));
   const txt = {}; ['eatKcal','activeKcal','workoutKcal'].forEach(k => { if (j[k] != null && j[k] !== '' && !toNum(j[k])) txt[k] = String(j[k]).slice(0, 40); });
   raw.weight = w || null; S.settings.lastSyncRaw = {at: Date.now(), raw, txt, lb: w0 && w !== w0 ? w0 : null, est: h.eatEst ? h.eatKcal : null, lowHR: hr0 && !hr ? Math.round(hr0) : null, hadLog: !!log};
-  if (!n) { save(); return 'В данных нет знакомых полей — проверь названия ключей.'; }
-  S.settings.lastSync = TODAY_ISO; save(); closeSheet(); render(); setTimeout(syncResultSheet, 250);
+  if (!n) { save(); return opt.quiet ? false : 'В данных нет знакомых полей — проверь названия ключей.'; }
+  S.settings.lastSync = date; if (opt.quiet) return true;
+  save(); closeSheet(); render(); setTimeout(syncResultSheet, 250);
   return 'Синхронизировано за ' + fdate(date);
 }
 function exportBackup() {
@@ -1490,6 +1502,9 @@ document.addEventListener('click', e => {
   else if (a === 'glogout') gSignOut();
   else if (a === 'backups') backupsSheet();
   else if (a === 'syncres') syncResultSheet();
+  else if (a === 'ghsave') { const v = ($('#ghtok')?.value || '').trim(); if (!/^(github_pat_|ghp_)\w{20,}$/.test(v)) { toast('Это не похоже на ключ GitHub — он начинается с github_pat_'); return; } try { localStorage.setItem(GHS, v); } catch (e) {} S.settings.pullErr = null; save(); syncSheet(); autoPull(true); }
+  else if (a === 'ghpull') autoPull(true);
+  else if (a === 'ghdel') { try { localStorage.removeItem(GHS); } catch (e) {} syncSheet(); toast('Ключ удалён'); }
   else if (a === 'weights') weightsSheet();
   else if (a === 'wbw') { const id = b.dataset.id; const c = curW(id); const cur = (S.weights || {})[id] || {w: c.w, bw: !!c.bw || (EX[id].kind === 'bw' && !c.w)}; setW(id, cur.w, !cur.bw); wSync(id); }
   else if (a === 'wstep') { const id = b.dataset.id, e = EX[id]; const inp = $('#w-' + id); const v = parseFloat(String(inp.value).replace(',', '.')) || 0; const nv = Math.max(0, r1(v + (+b.dataset.d) * (e.step || 2.5))); setW(id, nv, false); wSync(id); inp.value = String(nv); }
@@ -1545,10 +1560,50 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {});
 }
 
+// ---------- автосинхронизация через закрытый репозиторий forma-data ----------
+const GHS = 'forma.ghsync', GHREPO = 'https://api.github.com/repos/forma-ua/forma-data/contents/';
+const ghTok = () => { try { return localStorage.getItem(GHS) || ''; } catch (e) { return ''; } };
+let PULLING = false;
+async function autoPull(manual) {
+  const t = ghTok(); if (!t || PULLING) return 0; PULLING = true; let n = 0, err = '';
+  try {
+    const H = {Authorization: 'Bearer ' + t, Accept: 'application/vnd.github+json'};
+    const months = [TODAY_ISO.slice(0, 7)]; if (TODAY.getDate() <= 3) months.unshift(prevYM(TODAY_ISO.slice(0, 7)));
+    const last = S.settings.lastPull || ''; let files = [];
+    for (const m of months) {
+      const r = await fetch(GHREPO + 'sync/' + m + '?t=' + Date.now(), {headers: H, cache: 'no-store'});
+      if (r.status === 401 || r.status === 403) { err = 'ключ не подходит или закончился'; break; }
+      if (!r.ok) continue;
+      const arr = await r.json(); files = files.concat(arr.filter(f => f.name.endsWith('.json')).map(f => ({key: m + '/' + f.name, path: f.path})));
+    }
+    files = files.filter(f => f.key > last).sort((a, b) => a.key < b.key ? -1 : 1).slice(-40);
+    for (const f of files) {
+      const r = await fetch(GHREPO + f.path + '?t=' + Date.now(), {headers: {...H, Accept: 'application/vnd.github.raw+json'}, cache: 'no-store'});
+      if (!r.ok) continue; if (mergeSync(await r.text(), {quiet: true}) === true) n++; S.settings.lastPull = f.key;
+    }
+    S.settings.pullAt = Date.now();
+  } catch (e) { err = 'нет связи с GitHub'; }
+  S.settings.pullErr = err || null; PULLING = false; save();
+  if (n) { if (!$('#sheet')) render(); toast('Данные из Здоровья обновлены'); }
+  else if (manual) toast(err ? 'Не получилось: ' + err : 'Новых данных пока нет');
+  if ($('#sheet #ghstat')) $('#sheet #ghstat').innerHTML = ghStatus();
+  return n;
+}
+function ghStatus() {
+  if (!ghTok()) return 'Не настроено.';
+  if (S.settings.pullErr) return '<span style="color:var(--warn)">Ошибка: ' + esc(S.settings.pullErr) + '.</span>';
+  if (!S.settings.lastPull) return 'Ключ сохранён. Данных от команды пока не было — запусти её один раз.';
+  const k = S.settings.lastPull.split('/')[1] || ''; const m = k.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/);
+  return 'Последние данные от команды: ' + (m ? `${+m[3]} ${MON[+m[2] - 1]}, ${m[4]}:${m[5]}` : k) + '.';
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoPull(); });
+setTimeout(() => autoPull(), 1200);
+
 // ---------- потянуть вниз, чтобы обновить ----------
 async function refreshAll() {
   try { const r = await navigator.serviceWorker?.getRegistration(); await r?.update(); } catch (e) {}
   if (gValid()) await driveSync(false);
+  await autoPull();
   await initPhotos(); render();
   toast(S.google && !gValid() ? 'Обновлено. Для Google Диска нажми «Сохранить в Google»' : 'Обновлено');
 }
