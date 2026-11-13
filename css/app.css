@@ -388,3 +388,9 @@ html,body{height:auto;min-height:100%}
 .pl.prep .plt,.pl.rest .plt{color:var(--muted)}
 .pl .bar{width:100%}
 .plctl{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;width:100%;margin-top:6px}
+/* итоги месяца */
+.mhero h1{font-size:34px}
+.mhero .grid2{margin-top:6px}
+.mhero .stat b small{font-size:.55em;font-weight:500;color:var(--muted)}
+.up{color:var(--good)} .down{color:var(--warn)}
+.mteaser .eyebrow{display:block;margin-bottom:2px}
