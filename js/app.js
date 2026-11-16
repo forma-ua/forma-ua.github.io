@@ -758,12 +758,35 @@ function calcAll() {
 }
 
 // ================= sheets =================
+// если поверх тренировки открыть карточку упражнения — после закрытия вернёмся в тренировку
+let SHEET_BACK = null;
 function openSheet(html, cls = '') {
+  const prevSes = $('#sheet #sesmin') || $('#sheet .timer');
+  if (prevSes && SES && !cls.includes('full')) SHEET_BACK = {y: $('#sheet .sheet').scrollTop}; else if (cls.includes('full')) SHEET_BACK = null;
   closeSheet();
   const w = document.createElement('div'); w.className = 'sheet-wrap'; w.id = 'sheet';
   w.innerHTML = `<div class="sheet ${cls}" role="dialog" aria-modal="true">${html}</div>`;
-  if (!cls.includes('welcome')) w.addEventListener('click', e => { if (e.target === w) closeSheet(); });
+  if (!cls.includes('welcome')) { w.addEventListener('click', e => { if (e.target === w) dismissSheet(); }); swipeToClose(w); }
   document.body.appendChild(w); document.body.style.overflow = 'hidden';
+}
+function dismissSheet() {
+  if (PL) return plFinish(false);
+  const wasSes = !!($('#sheet #sesmin') || $('#sheet .timer')), wasW = !!$('#sheet .wlist');
+  closeSheet();
+  if (SHEET_BACK && SES && !wasSes) { const y = SHEET_BACK.y; SHEET_BACK = null; renderSession(); const sh = $('#sheet .sheet'); if (sh) sh.scrollTop = y; return; }
+  SHEET_BACK = null;
+  if (wasSes && SES) { render(); toast('Тренировка свёрнута — продолжить можно с главного экрана'); return; }
+  if (wasW) render();
+}
+// смахни шторку вниз, чтобы закрыть
+function swipeToClose(w) {
+  let y0 = null, dy = 0, sh = null;
+  w.addEventListener('touchstart', e => { sh = w.querySelector('.sheet'); const t = e.target; if (t.closest('input,textarea,select,.chips,.setrow')) { y0 = null; return; }
+    y0 = (sh.scrollTop <= 0 || t.closest('.grab,.sheet-top')) ? e.touches[0].clientY : null; dy = 0; }, {passive: true});
+  w.addEventListener('touchmove', e => { if (y0 == null) return; dy = e.touches[0].clientY - y0; if (dy <= 0) { sh.style.transform = ''; return; } if (sh.scrollTop > 0 && !e.target.closest('.grab,.sheet-top')) { y0 = null; sh.style.transform = ''; return; }
+    sh.style.transition = 'none'; sh.style.transform = `translateY(${dy}px)`; }, {passive: true});
+  w.addEventListener('touchend', () => { if (y0 == null) return; y0 = null; sh.style.transition = 'transform .2s ease';
+    if (dy > 110) { sh.style.transform = 'translateY(100%)'; setTimeout(dismissSheet, 180); } else sh.style.transform = ''; });
 }
 function closeSheet() { const s = $('#sheet'); if (s) s.remove(); document.body.style.overflow = ''; }
 const sheetTop = (title, extra = '') => `<div class="grab"></div><div class="sheet-top"><h2>${title}</h2><div class="row">${extra}<button class="icon-btn" data-act="close" aria-label="Закрыть">✕</button></div></div>`;
@@ -1500,8 +1523,7 @@ document.addEventListener('click', e => {
   if (b.dataset.act === 'top') { window.scrollTo({top: 0, behavior: 'smooth'}); return; }
   const a = b.dataset.act;
   if (a === 'ex') exSheet(b.dataset.id);
-  else if (a === 'close' && PL) plFinish(false);
-  else if (a === 'close') { const wasW = !!document.querySelector('#sheet .wlist'); closeSheet(); if (wasW) render(); }
+  else if (a === 'close') dismissSheet();
   else if (a === 'ptab') { PLANTAB = b.dataset.k; render(); }
   else if (a === 'gotoplan') { PLANTAB = b.dataset.k; TAB = 'plan'; render(); window.scrollTo(0, 0); }
   else if (a === 'gotoprog') { TAB = 'journal'; JTAB = 'progress'; render(); window.scrollTo(0, 0); }
