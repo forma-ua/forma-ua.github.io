@@ -168,7 +168,7 @@ const REST_PLAN = ['p0202','p0101','p0102','p0103','p0106','p0506'];
 
 const CATS = [
   ['all','Все'],['glutes','Ягодицы'],['legs','Ноги'],['hips','Тазобедренные'],['back','Спина'],['posture','Осанка и поясница'],
-  ['chest','Грудь'],['arms','Руки'],['core','Пресс и кор'],['cardio','Кардио'],['warm','Разминка'],['pelvis','Мобильность таза'],['stretch','Растяжка']
+  ['chest','Грудь'],['arms','Руки'],['core','Пресс и кор'],['cardio','Кардио'],['warm','Разминка и заминка'],['pelvis','Мобильность таза'],['stretch','Растяжка']
 ];
 // категории упражнений: первая — основная (в ней упражнение показывается в «Все»)
 const EXCATS = {
@@ -183,7 +183,7 @@ const EXCATS = {
   stepper:['cardio','warm'],
   w_9090rot:['warm','hips'], w_9090lift:['warm','hips','glutes'], w_9090foot:['warm','hips'], w_slide:['warm','hips'], w_frog:['warm','hips']
 };
-const PDFCATS = {'Раздел 01':['pelvis'], 'Раздел 02':['pelvis','posture'], 'Раздел 03':['stretch','hips'], 'Раздел 04':['posture','pelvis'], 'Раздел 05':['pelvis']};
+const PDFCATS = {'Раздел 01':['pelvis'], 'Раздел 02':['pelvis','posture'], 'Раздел 03':['stretch','hips'], 'Раздел 04':['posture','pelvis'], 'Раздел 05':['pelvis'], 'Раздел 06':['hips','pelvis'], 'Раздел 07':['hips','pelvis']};
 
 const GOALS = [
   ['Округлая и объёмная попа','мостик, румынская тяга, болгарские выпады, разведение бёдер'],

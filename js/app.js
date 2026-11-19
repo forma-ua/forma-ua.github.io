@@ -162,7 +162,8 @@ function keytel(hr, kg, age, sex, min) {
   return Math.max(0, perMin * min);
 }
 const metKcal = (met, kg, min) => met * 3.5 * kg / 200 * min;
-function sessionMinutes(k) { const p = PLAN[k]; const sets = p.main.reduce((a, m) => a + m[1], 0) + p.act.reduce((a, x) => a + x.sets, 0); return {warm: 15, main: Math.round(sets * 2.6), mob: 8, total: 15 + Math.round(sets * 2.6) + 8}; }
+const WARMUP = () => WARM.filter(w => w.ref), COOL = () => WARM.filter(w => !w.ref);
+function sessionMinutes(k) { const p = PLAN[k]; const sets = p.main.reduce((a, m) => a + m[1], 0) + p.act.reduce((a, x) => a + x.sets, 0); return {warm: 7, main: Math.round(sets * 2.6), cool: 8, mob: 8, total: 7 + Math.round(sets * 2.6) + 8 + 8}; }
 const nSets = sets => Object.values(sets).reduce((a, x) => a + x.length, 0);
 function tonnage(sets) { let t = 0; Object.entries(sets).forEach(([id, arr]) => { const ex = EX[id]; if (ex && ex.kind === 'w') arr.forEach(s => { if (s.done) t += s.w * s.r * (ex.unit ? 2 : 1); }); }); return Math.round(t); }
 
@@ -404,10 +405,11 @@ function vPlan() {
         if (dn) return `<div class="row between" style="gap:10px;flex-wrap:wrap"><span class="tag good">Сделано · ${dn.date === TODAY_ISO ? 'сегодня' : fdate(dn.date)}</span><button class="btn line sm" data-act="log" data-id="${dn.id}">Посмотреть</button></div>`;
         return `<button class="btn day block" data-act="start" data-k="${k}">Начать тренировку ${k}</button>`; })()}
     </section>
-    ${fold('pw', '<h2><em>1</em>Разминка</h2>', '≈ 15 мин · ' + WARM.length + ' упр.', `<div class="list">${WARM.map(w => itemRow(w.id, `<b>${w.dose}</b>`, '')).join('')}</div>`, false, 'lfold')}
+    ${fold('pw', '<h2><em>1</em>Разминка</h2>', '≈ 7 мин · кардио', `<div class="list">${WARMUP().map(w => itemRow(w.id, `<b>${w.dose}</b>`, '')).join('')}</div>`, false, 'lfold')}
     ${fold('pa', '<h2><em>2</em>Активация</h2>', '≈ 4 мин · ' + p.act.length + ' упр.', `<div class="list">${p.act.map(a => itemRow(a.ex, `<b>${a.sets} × </b><small>${a.reps}</small>`, MUSCLES[EX[a.ex].p[0]])).join('')}</div>`, false, 'lfold')}
     ${fold('pm', '<h2><em>3</em>Основная часть</h2>', p.main.length + ' упр. · справа вес', `<div class="list">${main}</div>`, true, 'lfold')}
-    ${fold('pb', '<h2><em>4</em>Мобильность таза</h2>', '≈ 8 мин · ' + p.mob.length + ' упр.', `<button class="btn line block" data-act="player" data-src="plan-${k}">Сделать по шагам ▶</button><div class="list">${p.mob.map(id => itemRow(id, `<small>${esc(PDFMAP[id].reps || '')}</small>`, esc(PDFMAP[id].sectionTitle))).join('')}</div>`, false, 'lfold')}
+    ${fold('pz', '<h2><em>4</em>Заминка</h2>', '≈ 8 мин · ' + COOL().length + ' упр.', `<button class="btn line block" data-act="player" data-src="cool">Сделать по шагам ▶</button><div class="list">${COOL().map(w => itemRow(w.id, `<b>${w.dose}</b>`, '')).join('')}</div>`, false, 'lfold')}
+    ${fold('pb', '<h2><em>5</em>Мобильность таза</h2>', '≈ 8 мин · ' + p.mob.length + ' упр.', `<button class="btn line block" data-act="player" data-src="plan-${k}">Сделать по шагам ▶</button><div class="list">${p.mob.map(id => itemRow(id, `<small>${esc(PDFMAP[id].reps || '')}</small>`, esc(PDFMAP[id].sectionTitle))).join('')}</div>`, false, 'lfold')}
     ${fold('pp', '<h2>Как прогрессировать</h2>', 'правила прибавки', `<ul class="clean">${p.progress.map(x => `<li>${x}</li>`).join('')}</ul>
       <p class="small muted">Общее правило: работай с запасом 1–2 повтора. Каждые 6–8 недель — лёгкая неделя: те же веса, вдвое меньше подходов.</p>`)}
     ${fold('pf', '<h2>На что рассчитывать</h2>', 'и прогноз весов', `<ul class="clean">${p.forecast.map(x => `<li>${x}</li>`).join('')}</ul>
@@ -429,7 +431,7 @@ function libRow(x) {
   if (it.type === 'gym') { const sg = WEIGHTED(it.kind) ? curW(x.id) : null;
     return itemRow(x.id, sg ? `<b>${sg.w == null && !sg.bw ? '—' : esc(wLabel(it, sg.w, sg.bw))}</b><small>${esc(it.equip)}</small>` : `<small>${esc(it.equip)}</small>`, it.p.map(m => MUSCLES[m]).join(', ')); }
   if (it.type === 'pdf') return itemRow(x.id, `<span class="tag hot">${esc(it.tag || 'гид')}</span>`, esc(it.sectionTitle));
-  return itemRow(x.id, `<small>${esc(it.dose)}</small>`, 'Разминка');
+  return itemRow(x.id, `<small>${esc(it.dose)}</small>`, it.ref ? 'Разминка' : 'Заминка');
 }
 const libSort = (a, b) => a.kind - b.kind || (a.kind === 2 ? (a.id < b.id ? -1 : 1) : getItem(a.id).name.localeCompare(getItem(b.id).name, 'ru'));
 function vLib() {
@@ -800,7 +802,7 @@ function exSheet(id) {
       <section class="card"><h3>Как выполнять</h3><p>${esc(it.how)}</p><h3>На что обратить внимание</h3><p class="muted">${esc(it.attention)}</p></section>
       <p class="small muted">Из твоего гида «Таз в движении». Боль в пояснице, крестце, паху, колене или запястье — повод остановиться.</p>`;
   } else if (it.type === 'warm') {
-    html += `<span class="tag hot">Разминка · ${esc(it.dose)}</span>${it.mus ? `<div class="mapwrap">${bodyMap(it.mus, [])}<div class="legend">${it.mus.map(m => `<span><i class="k" style="background:var(--hot)"></i>${MUSCLES[m]}</span>`).join('')}</div></div>` : ''}
+    html += `<span class="tag hot">${it.ref ? 'Разминка' : 'Заминка'} · ${esc(it.dose)}</span>${it.mus ? `<div class="mapwrap">${bodyMap(it.mus, [])}<div class="legend">${it.mus.map(m => `<span><i class="k" style="background:var(--hot)"></i>${MUSCLES[m]}</span>`).join('')}</div></div>` : ''}
       <section class="card"><h3>Как выполнять</h3><p>${esc(it.how)}</p></section>`;
   } else {
     const days = Object.entries(PLAN).flatMap(([k, p]) => p.main.filter(m => m[0] === id).map(m => `${p.day.slice(0, 2)} ${k}: ${m[1]} × ${m[2]}–${m[3]}`));
@@ -916,7 +918,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 setInterval(() => { if (document.visibilityState === 'visible' && !$('#sheet') && TAB === 'today') render(); }, 15 * 60000);
 function startSession(k, opt = {}) {
   const p = PLAN[k]; const edit = opt.editId ? S.logs.find(l => l.id === opt.editId) : null;
-  SES = {k, start: Date.now(), last: Date.now(), warm: {}, act: {}, mob: {}, swap: {}, sets: {}, wu: {}, bw: {}, rpe: edit && edit.rpe ? {...edit.rpe} : {}, note: edit ? edit.note || '' : '', date: opt.date || (edit && edit.date) || null, editId: edit ? edit.id : null};
+  SES = {k, start: Date.now(), last: Date.now(), warm: {}, cool: {}, act: {}, mob: {}, swap: {}, sets: {}, wu: {}, bw: {}, rpe: edit && edit.rpe ? {...edit.rpe} : {}, note: edit ? edit.note || '' : '', date: opt.date || (edit && edit.date) || null, editId: edit ? edit.id : null};
   p.main.forEach(([id, n, lo, hi, note, o]) => {
     const useId = edit && !edit.sets[id] && o?.alt && edit.sets[o.alt] ? o.alt : id; if (useId !== id) SES.swap[id] = useId;
     const sg = suggest(useId, k); const old = edit && edit.sets[useId];
@@ -952,18 +954,20 @@ function renderSession() {
         <input class="inp" id="s-${id}-${i}-r" data-set="${id}|${i}|r" type="number" inputmode="numeric" value="${s.r}" placeholder="${hi}" aria-label="Повторы, подход ${i + 1}">
         <button class="ok" data-act="done" data-id="${id}" data-i="${i}" aria-pressed="${s.done}" aria-label="Подход выполнен">✓</button></div>
         <div class="setrpe" id="sr-${id}-${i}" ${s.done ? '' : 'hidden'}><span class="small muted">подход ${i + 1}:</span>${[[1, 'легко'], [2, 'норм'], [3, 'тяжело']].map(([v, l]) => `<button class="chip" data-act="srpe" data-id="${id}" data-i="${i}" data-v="${v}" aria-pressed="${s.e === v}">${l}</button>`).join('')}</div>`).join('')}
-      ${e.kind === 't' && !past ? `<button class="btn line sm" data-act="hold" data-id="${id}">Засечь ${holdSec(id)} сек</button>` : ''}
+      ${e.kind === 't' && !past ? `<button class="btn line sm" data-act="hold" data-id="${id}">▶ Засечь ${holdSec(id)} сек${e.perSide ? ' на каждую сторону' : ''}</button>` : ''}
       <input class="inp exnote" data-note="${id}" value="${esc((S.notes || {})[id] || '')}" placeholder="Заметка: сиденье, хват, ощущения…" aria-label="Заметка к упражнению">
     </section>`;
   }).join('');
+  SES.cool = SES.cool || {};
   const chk = (grp, id, dose) => `<label class="chk"><input type="checkbox" data-chk="${grp}|${id}" ${SES[grp][id] ? 'checked' : ''}><span>${esc(getItem(id).name)}</span><span class="small muted">${esc(dose)}</span></label>`;
   const title = past ? `${SES.editId ? 'Правка' : 'Тренировка'} <em>${k}</em>` : `Тренировка <em>${k}</em>`;
   openSheet(sheetTop(title, past ? `<span class="tag day">${fdate(SES.date)}</span>` : `<span class="tag day" id="sesmin">${el} мин</span>`) + `
     <p class="small muted">${p.title}. ${past ? (SES.editId ? 'Поправь веса и повторы и нажми «Сохранить».' : 'Тренировка задним числом: впиши, что делала, и отметь подходы галочкой.') : 'Веса подставлены по прошлой тренировке, экран не погаснет до конца.'}</p>
     ${past ? '' : readyCard()}
-    ${past ? '' : `<section class="card"><h3>Разминка</h3><div>${WARM.map(w => chk('warm', w.id, w.dose)).join('')}</div></section>
+    ${past ? '' : `<section class="card"><h3>Разминка</h3><div>${WARMUP().map(w => chk('warm', w.id, w.dose)).join('')}</div></section>
     <section class="card"><h3>Активация</h3><div>${p.act.map(a => chk('act', a.ex, a.sets + ' × ' + a.reps)).join('')}</div></section>`}
     ${mainHtml}
+    ${past ? '' : `<section class="card"><div class="row between"><h3>Заминка</h3><button class="btn line sm" data-act="player" data-src="cool">По шагам ▶</button></div><div>${COOL().map(w => chk('cool', w.id, w.dose)).join('')}</div></section>`}
     ${past ? '' : `<section class="card"><div class="row between"><h3>Мобильность таза</h3><button class="btn line sm" data-act="player" data-src="ses">По шагам ▶</button></div><div>${p.mob.map(id => chk('mob', id, PDFMAP[id].reps || '')).join('')}</div></section>`}
     <textarea class="inp snote" data-snote="1" rows="2" placeholder="Заметка к тренировке: самочувствие, что поменять в следующий раз">${esc(SES.note || '')}</textarea>
     <button class="btn day block" data-act="finish">${past ? 'Сохранить' : 'Завершить тренировку'}</button>
@@ -986,10 +990,36 @@ function lightSession() {
   saveSes(); toast('Убрала по одному подходу');
 }
 function holdSec(id) { const sg = suggest(id, SES.k); const n = parseInt(String(sg.target)); const row = PLAN[SES.k].main.find(m => m[0] === id || (m[5] && m[5].alt === id)); return n || (row ? row[3] : 30); }
+let HOLD = null;
 function holdStart(id) {
   const arr = SES.sets[id]; const i = arr.findIndex(x => !x.done); if (i < 0) return toast('Все подходы уже отмечены');
-  const sec = holdSec(id); startTimer(sec, 'Держи', () => { arr[i].r = sec; arr[i].done = true; saveSes(); const y = $('#sheet .sheet')?.scrollTop; renderSession(); if ($('#sheet .sheet')) $('#sheet .sheet').scrollTop = y; startTimer(60); });
-  beep(660, 0.12);
+  clearInterval(TIMER); stopBeeps(); if ($('#timer')) $('#timer').hidden = true;
+  const sec = holdSec(id), sides = EX[id].perSide;
+  const seg = [{t: 'prep', l: 'Приготовься', s: 5}, {t: 'work', l: sides ? 'Правая сторона' : 'Держи', s: sec}];
+  if (sides) seg.push({t: 'prep', l: 'Смени сторону', s: 6}, {t: 'work', l: 'Левая сторона', s: sec});
+  HOLD = {id, i, sec, seg, k: 0, end: Date.now() + seg[0].s * 1000, worked: 0};
+  beep(660, 0.12); wake(true);
+  const o = document.createElement('div'); o.id = 'hold'; document.body.appendChild(o); holdDraw(); HOLD.t = setInterval(holdTick, 200);
+}
+function holdDraw() {
+  const o = $('#hold'); if (!o || !HOLD) return; const sg = HOLD.seg[HOLD.k]; const left = Math.max(0, Math.ceil((HOLD.end - Date.now()) / 1000));
+  o.className = sg.t; o.innerHTML = `<div class="hin"><span class="eyebrow">${esc(EX[HOLD.id].name)} · подход ${HOLD.i + 1}</span><b class="hl">${sg.l}</b><div class="hn">${left}</div>
+    <div class="row" style="gap:10px;justify-content:center"><button class="btn line" data-act="holdstop">Отменить</button><button class="btn day" data-act="holddone">Готово</button></div></div>`;
+}
+function holdTick() {
+  if (!HOLD) return; const left = Math.ceil((HOLD.end - Date.now()) / 1000); const n = $('#hold .hn');
+  if (n && n.textContent !== String(Math.max(0, left))) { n.textContent = Math.max(0, left); if (left > 0 && left <= 3) beep(520, 0.08, 0.15); }
+  if (left <= 0) { const sg = HOLD.seg[HOLD.k]; if (sg.t === 'work') HOLD.worked += sg.s; beep(sg.t === 'work' ? 880 : 740, 0.25); if (navigator.vibrate) navigator.vibrate(sg.t === 'work' ? [200, 80, 200] : 120);
+    HOLD.k++; if (HOLD.k >= HOLD.seg.length) return holdEnd(true); HOLD.end = Date.now() + HOLD.seg[HOLD.k].s * 1000; holdDraw(); }
+}
+function holdEnd(save) {
+  if (!HOLD) return; clearInterval(HOLD.t); const h = HOLD; HOLD = null; const o = $('#hold'); if (o) o.remove();
+  if (!save || !SES) return;
+  const sg = h.seg[Math.min(h.k, h.seg.length - 1)]; let got = h.worked; if (h.k < h.seg.length && sg.t === 'work') got += Math.max(0, sg.s - Math.ceil((h.end - Date.now()) / 1000));
+  const nSides = h.seg.filter(x => x.t === 'work').length; const r = Math.max(1, Math.round(got / nSides) || h.sec);
+  const s = SES.sets[h.id][h.i]; s.r = r; s.done = true; saveSes();
+  const y = $('#sheet .sheet')?.scrollTop; renderSession(); if ($('#sheet .sheet')) $('#sheet .sheet').scrollTop = y; startTimer(60);
+  toast('Подход ' + (h.i + 1) + ': ' + r + ' сек' + (nSides > 1 ? ' на сторону' : ''));
 }
 function beep(f = 880, d = 0.15, vol = 0.25) { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); AC.resume(); const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = f; const t = AC.currentTime; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g).connect(AC.destination); o.start(t); o.stop(t + d + 0.02); } catch (e) {} }
 
@@ -1009,6 +1039,7 @@ function plStep(id, secOverride) {
 function plBuild(src) {
   let steps;
   if (src === 'rest') { steps = REST_PLAN.map((id, i) => plStep(id, [60, 120, 120, 120, 120, 120][i])); steps.push({id: null, name: 'Свободное движение под музыку', label: '1 мин', head: 'Двигай тазом как хочется · 1 мин', sec: 60, sets: 1, side: false, mode: 'time'}); }
+  else if (src === 'cool') steps = COOL().map(w => plStep(w.id));
   else { const k = src.startsWith('plan-') ? src.slice(5) : SES ? SES.k : PLANTAB; steps = PLAN[k].mob.map(id => plStep(id)); }
   const seg = [];
   steps.forEach((st, si) => { seg.push({t: 'prep', si, sec: 6});
@@ -1051,7 +1082,7 @@ function plGo(d) {
 }
 function plFinish(done) {
   clearInterval(PLT); const src = PL ? PL.src : ''; const steps = PL ? PL.steps : []; PL = null;
-  if (done) { S.mobDays = S.mobDays || []; if (!S.mobDays.includes(TODAY_ISO)) S.mobDays.push(TODAY_ISO); save(); if (SES && src === 'ses') steps.forEach(st => { if (st.id) SES.mob[st.id] = true; }); saveSes && SES && saveSes(); beep(988, 0.3); toast('Комплекс сделан'); }
+  if (done) { S.mobDays = S.mobDays || []; if (!S.mobDays.includes(TODAY_ISO)) S.mobDays.push(TODAY_ISO); save(); if (SES && src === 'ses') steps.forEach(st => { if (st.id) SES.mob[st.id] = true; }); if (SES && src === 'cool') { SES.cool = SES.cool || {}; steps.forEach(st => { if (st.id) SES.cool[st.id] = true; }); } saveSes && SES && saveSes(); beep(988, 0.3); toast('Комплекс сделан'); }
   if (SES) renderSession(); else { wake(false); closeSheet(); render(); }
 }
 
@@ -1542,6 +1573,8 @@ document.addEventListener('click', e => {
   else if (a === 'ready' && SES) { SES.ready = SES.ready || {}; SES.ready[b.dataset.k] = +b.dataset.v; saveSes(); const y = $('#sheet .sheet').scrollTop; renderSession(); $('#sheet .sheet').scrollTop = y; }
   else if (a === 'light' && SES) { lightSession(); const y = $('#sheet .sheet').scrollTop; renderSession(); $('#sheet .sheet').scrollTop = y; }
   else if (a === 'hold' && SES) holdStart(b.dataset.id);
+  else if (a === 'holdstop') holdEnd(false);
+  else if (a === 'holddone') holdEnd(true);
   else if (a === 'settings') settingsSheet();
   else if (a === 'srpe' && SES) { const s = SES.sets[b.dataset.id][+b.dataset.i]; const v = +b.dataset.v; s.e = s.e === v ? 0 : v; saveSes(); b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', +x.dataset.v === s.e)); }
   else if (a === 'done') { const s = SES.sets[b.dataset.id][+b.dataset.i]; s.done = !s.done; b.setAttribute('aria-pressed', s.done); const sr = $(`#sr-${b.dataset.id}-${b.dataset.i}`); if (sr) sr.hidden = !s.done; saveSes();
